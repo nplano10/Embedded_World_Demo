@@ -3,6 +3,7 @@ import smbus
 import time
 from gpiozero import LED
 from time import sleep
+import spidev
 
 
 
@@ -19,7 +20,7 @@ class ADXL359:
         :param device_addr: I2C address of ADXL359 (default is 0x1D)
         """
         self.serial_communication_protocol = serial_communication_protocol
-        self.bus = smbus.SMBus(bus_num)
+        # self.bus = smbus.SMBus(bus_num)
         self.addr = device_addr
 
         self.g_min = -10
@@ -35,7 +36,7 @@ class ADXL359:
         self.DEVID_AD = 0x00
         self.POWER_CTL = 0x2D
         self.FILTER = 0x28
-        self.FILTER_OP = 0x10
+        self.FILTER_OP = 0x13
         self.OP_MODE=0x00
         self.TEMP_AND_ACC_START_ADDRESS =0x06
         self.X_DATA = 0x08
@@ -45,19 +46,33 @@ class ADXL359:
         self.RESET_CODE = 0x52
         self.STATUS = 0x04
 
+        self.spi = spidev.SpiDev()
+        self.spi.open(0, 0)  # Bus 0, Chip select 0 (CE0)
+        self.spi.max_speed_hz = 5000000  # Adjust SPI speed as needed
+        self.spi.mode = 0b00  # SPI mode 0 (CPOL = 0, CPHA = 0)
+        self.spi_read= 0x01
+        self.spi_write =0x00
+
+
+
     def _write_register(self, reg, value):
         """Write a byte to a register."""
-        self.bus.write_byte_data(self.addr, reg, value)
+        # self.bus.write_byte_data(self.addr, reg, value)
+        message = self.spi_write|(reg<<1)
+        self.spi.xfer2([message, value])
         
     def _read_register(self, reg):
         """Read a byte from a register."""
-        return self.bus.read_byte_data(self.addr, reg)
+        # return self.bus.read_byte_data(self.addr, reg)
+        message = self.spi_read|(reg<<1)
+        return self.spi.xfer2([message, 0x00])[1]
     
-    def _read_registers(self, reg, length):
+    def _read_registers(self, start_register, length):
         """Read multiple bytes from a register."""
-        
-        return self.bus.read_i2c_block_data(self.addr, reg, length)
-
+        message = self.spi_read|(start_register<<1)
+        response = self.spi.xfer2([message] + [0x00] * length)
+        return response[1:]  
+        # return self.bus.read_i2c_block_data(self.addr, start_register, length)
     def _initialize(self):
         """
         Initialize the ADXL359 sensor (e.g., power on, data format setup).
@@ -177,13 +192,30 @@ import numpy as np
 if __name__ == "__main__":
     adxl359 = ADXL359()
     adxl359._initialize()
+    time.sleep(3)
+    while(1):
+        # x_data,y_data,z_data,temp_data =adxl359.collect_data()
+        # id = adxl359.get_device_id()
+        # id =adxl359.read_raw_temp_and_acceleration_data()
+        
+        print(id)
+        bytes = adxl359.read_raw_temp_and_acceleration_data()
+        print(bytes)
+        ret = adxl359.temp_bytes_to_celcius(bytes)
+        
+        print(ret)
+        time.sleep(0.3)
 
-    x_data,y_data,z_data,temp_data =adxl359.collect_data()
-    plt.plot(temp_data)
-    plt.show()
+
+
+    # x_data,y_data,z_data,temp_data =adxl359.collect_data()
+    # plt.plot(x_data)
+    # plt.show()
     # plt.plot(y_data)
     # plt.show()
     # plt.plot(z_data)
+    # plt.show()
+    # plt.plot(temp_data)
     # plt.show()
 
 
