@@ -17,7 +17,7 @@ import time
 from PIL import Image
 import os
 
-
+from datetime import datetime
 
 
 
@@ -54,17 +54,45 @@ class RandomImageWindow(QMainWindow):
         central_widget.setLayout(layout)
 
         # Create the button
-        self.button = QPushButton('Collect Frame', self)
+        self.button = QPushButton('Collect Single Frame', self)
         self.button.clicked.connect(self.collect_frame)
 
         # Resize and move the button
         self.button.resize(150, 75)  # Resize the button
-        self.button.move(800, 50)  # Move the button to the position (800, 50)
-
+        self.button.move(1000, 400)  # Move the button to the position (800, 50)
         self.text_input = QLineEdit(self)
         self.text_input.setPlaceholderText("label")  # Optional placeholder text
-        self.text_input.resize(150, 30)  # Resize the button
-        self.text_input.move(800, 130)  # Move the button to the position (800, 50)
+        self.text_input.resize(300, 30)  # Resize the button
+        self.text_input.move(800, 510)  # Move the button to the position (800, 50)
+        self.label = "unlabeled"
+
+        self.start_collection_button = QPushButton('Start Collection', self)
+        self.start_collection_button.clicked.connect(self.set_collect_flag)
+        self.start_collection_button.resize(150, 75)  # Resize the button
+        self.start_collection_button.move(700, 400)  # Move the button to the position (800, 50)
+
+        self.stop_collection_button = QPushButton('Stop Collection', self)
+        self.stop_collection_button.clicked.connect(self.unset_collect_flag)
+        self.stop_collection_button.resize(150, 75)  # Resize the button
+        self.stop_collection_button.move(850, 400)  # Move the button to the position (800, 50)
+
+        self.collect_flag =False
+
+
+
+        self.sample_frequency_label = QLineEdit(self)
+        self.sample_frequency_label.setPlaceholderText("Collection sample rate in fps")  # Optional placeholder text
+        self.sample_frequency_label.resize(300, 30)  # Resize the button
+        self.sample_frequency_label.move(800, 480)  # Move the button to the position (800, 50)
+        self.save_sample_rate=1
+        self.time_start =datetime.now().timestamp()
+        self.time_stop =datetime.now().timestamp()
+
+
+        self.set_inputs_buttons = QPushButton('Set Inputs', self)
+        self.set_inputs_buttons.clicked.connect(self.set_inputs)
+        self.set_inputs_buttons.resize(150, 30)  # Resize the button
+        self.set_inputs_buttons.move(650, 495)  # Move the button to the position (800, 50)
 
         # layout.addWidget(self.text_input)
 
@@ -74,7 +102,18 @@ class RandomImageWindow(QMainWindow):
         self.camera_timer.start(int(1000/60))  # Update every 2000ms (2 seconds)
         # Initial image update
         self.update_camera_feed()
-    
+
+    def set_inputs(self):
+        
+        if self.sample_frequency_label.text().isdigit():
+            self.save_sample_rate = int(self.sample_frequency_label.text())
+        if(self.text_input.text()!=""):
+            self.label = self.text_input.text()
+
+    def set_collect_flag(self):
+        self.collect_flag =True
+    def unset_collect_flag(self):
+        self.collect_flag =False
     def get_file_name(self,dir,prefix):
         index = 0 
         while(True):
@@ -88,10 +127,7 @@ class RandomImageWindow(QMainWindow):
 
     def collect_frame(self):
         # Update two random images on the first tab
-        prefix = self.text_input.text()
-        if prefix=="":
-            prefix = "unlabeled"
-        path = "data/"+prefix
+        path = "data/"+self.label
 
         if not os.path.exists("data"):
             os.mkdir("data")
@@ -101,34 +137,50 @@ class RandomImageWindow(QMainWindow):
         image_two = self.picam2_1.capture_array().astype(np.uint8)
 
         image_one_rgba = Image.fromarray(image_one)
-        image_one_rgba.save(self.get_file_name(path,prefix), "PNG")
+        image_one_rgba.save(self.get_file_name(path,self.label), "PNG")
 
         image_two_rgba = Image.fromarray(image_two)
-        image_two_rgba.save(self.get_file_name(path,prefix), "PNG")
-
-
+        image_two_rgba.save(self.get_file_name(path,self.label), "PNG")
 
         time.sleep(1)
+
+    def save_frame(self,frame1,frame2):
+        # Update two random images on the first tab
+        path = "data/"+self.label
+
+        if not os.path.exists("data"):
+            os.mkdir("data")
+        if not os.path.exists(path):
+            os.mkdir(path)
+
+        image_one_rgba = Image.fromarray(frame1)
+        image_one_rgba.save(self.get_file_name(path,self.label), "PNG")
+
+        image_two_rgba = Image.fromarray(frame2)
+        image_two_rgba.save(self.get_file_name(path,self.label), "PNG")
     
 
     def update_camera_feed(self):
         # Update two random images on the first tab
-        camera_one = self.cpature_camera_one_data()
-        camera_two = self.cpature_camera_two_data()
+        camera_one,camera_two = self.capture_camera_data()
         self.display_image(self.image_label1, camera_one)
         self.display_image(self.image_label2, camera_two)
 
-    def cpature_camera_one_data(self):
-        # Create a random image (height=240, width=320, RGB)
-        frame  = self.picam2_0.capture_array().astype(np.uint8)
-        frame =frame[:, :, :3]
-        return frame
+    def capture_camera_data(self):
 
-    def cpature_camera_two_data(self):
-        # Create a random image (height=240, width=320, RGB)
-        frame  = self.picam2_1.capture_array().astype(np.uint8)
-        frame =frame[:, :, :3]
-        return frame
+        frame1  = self.picam2_0.capture_array().astype(np.uint8)
+        frame2 = self.picam2_1.capture_array().astype(np.uint8)
+        
+        if(self.collect_flag==True):
+            self.time_stop =datetime.now().timestamp()
+            if(self.time_stop- self.time_start> (1/self.save_sample_rate)):
+                self.time_start = self.time_stop
+                self.save_frame(frame1,frame2)
+        
+        frame1 =frame1[:, :, :3]
+        frame2 =frame2[:, :, :3]
+        return frame1,frame2
+
     
     def display_image(self, label, image_data):
         # Convert NumPy array to QImage
