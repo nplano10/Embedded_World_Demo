@@ -16,9 +16,10 @@ import matplotlib.pyplot as plt
 import time
 from PIL import Image
 import os
+from picamera2.controls import Controls
 
 from datetime import datetime
-
+import json
 
 
 
@@ -27,11 +28,20 @@ class RandomImageWindow(QMainWindow):
         super().__init__()
 
         self.picam2_0 = Picamera2(0)
-        self.picam2_0.start()
-
+        #mode= self.picam2_0.sensor_modes[0]
+        #config = self.picam2_0.create_video_configuration(sensor={'output_size': mode['size'], 'bit_depth':
+        #mode['bit_depth']})
+        #self.picam2_0.configure(config)
+        
+        self.picam2_0.start()       
         self.picam2_1 = Picamera2(1)
+        
+        
         self.picam2_1.start()
-
+       # self.set_camera_config("camera_settings.json")
+        time.sleep(1)
+        
+        
         self.setWindowTitle("Random Image Viewer")
         self.setGeometry(100, 100, 1200, 1200)
 
@@ -102,6 +112,13 @@ class RandomImageWindow(QMainWindow):
         self.camera_timer.start(int(1000/60))  # Update every 2000ms (2 seconds)
         # Initial image update
         self.update_camera_feed()
+    def set_camera_config(self,json_file):
+            with open(json_file, 'r') as file:
+                config = json.load(file)
+            self.picam2_1.set_controls(config["controls"])
+            self.picam2_0.set_controls(config["controls"])
+     
+            #print(self.picam2_0.controls)
 
     def set_inputs(self):
         
