@@ -6,7 +6,7 @@ from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QPushButton, QDesktopWidget,QHBoxLayout,QComboBox,QTextEdit
 
 from multiprocessing import shared_memory
-#from picamera2 import Picamera2
+from picamera2 import Picamera2
 import adxl359
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from io import BytesIO
@@ -73,11 +73,11 @@ def update_image():
     global camera_two_shm
     global camera_shape 
 
-    # picam2_0 = Picamera2(0)
-    # picam2_0.start()
+    picam2_0 = Picamera2(0)
+    picam2_0.start()
 
-    # picam2_1 = Picamera2(1)
-    # picam2_1.start()
+    picam2_1 = Picamera2(1)
+    picam2_1.start()
 
     # Attach to the shared memory block
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
@@ -87,17 +87,20 @@ def update_image():
     while True:
         time.sleep(1/60)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
-            # one_image[:] = capture_camera_data(picam2_0)
-            one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
+            one_image[:] = capture_camera_data(picam2_0)
+            #one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
         with camera_two_lock:
-            # two_image[:] =capture_camera_data(picam2_1)
-            two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
-
-
+            two_image[:] =capture_camera_data(picam2_1)
+            #two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
 
 class CameraThread(QThread):
     # Define a signal to send data to the main thread
     camera_feed_signal = pyqtSignal(tuple)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)  # Make sure to call the base class's constructor
+        self.previous_camera_one = None
+        self.previous_camera_two = None
 
     def run(self):
         global camera_one_lock
@@ -105,27 +108,40 @@ class CameraThread(QThread):
         global camera_two_lock
         global camera_two_shm
         global camera_shape 
-        # Attach to the shared memory
+
+        # Attach to the shared memory for camera one
         with camera_one_lock:
             one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
-            # Create a NumPy array from the shared memory buffer
             one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
             camera_one = copy.deepcopy(one_image)
 
+        # Attach to the shared memory for camera two
         with camera_two_lock:
             two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
-            # Create a NumPy array from the shared memory buffer
             two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
             camera_two = copy.deepcopy(two_image)
-        
-        self.camera_feed_signal.emit((camera_one,camera_two))
+
+        # Check if either camera has new data
+        if (self.previous_camera_one is None or not np.array_equal(camera_one, self.previous_camera_one)) or \
+           (self.previous_camera_two is None or not np.array_equal(camera_two, self.previous_camera_two)):
+            # Update previous images with current ones
+            self.previous_camera_one = camera_one.copy()
+            self.previous_camera_two = camera_two.copy()
+            # Emit the signal with the new data
+            self.camera_feed_signal.emit((camera_one, camera_two))
 
 class Adxl359Thread(QThread):
     # Define a signal to send data to the main thread
     adxl359_plot_signal = pyqtSignal(np.ndarray)
-    
+
+    def __init__(self, parent=None):
+        super().__init__(parent)  # Call the parent constructor
+        # Initialize any other variables as needed
+        self.previous_data = None
+
     def run(self):
-        # Update one random image on the second tab
+        # Update data from shared memory
+ 
         global adxl359_data_lock
         global adxl359_shm
         global adxl359_data_shape
@@ -135,15 +151,16 @@ class Adxl359Thread(QThread):
             # Create a NumPy array from the shared memory buffer
             data = np.ndarray(adxl359_data_shape, dtype=np.float16, buffer=existing_shm.buf)
             ret = copy.deepcopy(data)
-        
-        self.adxl359_plot_signal.emit(ret)
+
+        # Emit the signal only if the data has changed
+        if self.previous_data is None or not np.array_equal(ret, self.previous_data):
+            self.previous_data = ret.copy()  # Update with the new data
+            self.adxl359_plot_signal.emit(ret)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-
-
-        
 
         # Set up the window to match the screen size
         screen = QDesktopWidget().screenGeometry()
@@ -248,6 +265,10 @@ class MainWindow(QMainWindow):
         self.plot2 = pg.PlotWidget(title="Vibration Y Axis")
         self.plot3 = pg.PlotWidget(title="Vibration Z Axis")
 
+        self.plot1_item = self.plot1.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='b')
+        self.plot2_item =self.plot2.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='g')
+        self.plot3_item =self.plot3.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='r')
+
         # Resize the plots
         plot_width = screen_width // 2  # Half the width of the screen
         plot_height = plot_width * 2 // 3  # Aspect ratio of 3:2 (height:width)
@@ -317,6 +338,7 @@ class MainWindow(QMainWindow):
         self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
         self.adxl359_thread.adxl359_plot_signal.connect(self.update_adxl359_feed)
 
+
         self.sensor_processes = multiprocessing.Process(target=update_adxl359_shm)
         self.sensor_processes.start()
 
@@ -369,11 +391,13 @@ class MainWindow(QMainWindow):
 
     def start_camera_thread(self):
         self.camera_thread.start()
+        
 
     def start_sensor_thread(self):
         self.adxl359_thread.start()
 
     def update_camera_feed(self,camera_data_tuple):
+
         camera_one, camera_two = camera_data_tuple
         self.display_image(self.camera_feed_1, camera_one)
         self.display_image(self.camera_feed_2, camera_two)
@@ -400,46 +424,39 @@ class MainWindow(QMainWindow):
 
     def update_adxl359_feed(self,array):
     
+        self.vibx = array[:, 0]
+        self.viby = array[:, 1]
+        self.vibz = array[:, 2]
+        self.temp = array[0, 3]
+        print(self.temp)
 
-        if not np.array_equal(self.vibx, array[:, 0]) \
-            or not np.array_equal(self.viby, array[:, 1]) \
-            or not np.array_equal(self.vibz, array[:, 2]) \
-            or self.temp != array[0, 3]:
-            # Update the values if they are not equal
-            self.vibx = array[:, 0]
-            self.viby = array[:, 1]
-            self.vibz = array[:, 2]
-            self.temp = array[0, 3]
 
-            self.plot1.clear()
-            self.plot2.clear()
-            self.plot3.clear()
-            self.plot1.plot(range(len(self.vibx)),self.vibx, pen='b')
-            self.plot2.plot(range(len(self.viby)),self.viby, pen='g')
-            self.plot3.plot(range(len(self.vibz)),self.vibz, pen='r')
-            self.temperature_label.setText(f"Temperature: {self.temp:.2f} °C")
+        self.plot1_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibx)
+        self.plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),self.viby)
+        self.plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibz)
+        self.temperature_label.setText(f"Temperature: {self.temp:.2f} °C")
 
-            self.anomaly_score_plot1.clear()
-            self.anomaly_score_plot2.clear()
-            self.anomaly_score_plot3.clear()
+        # self.anomaly_score_plot1.clear()
+        # self.anomaly_score_plot2.clear()
+        # self.anomaly_score_plot3.clear()
 
-            self.update_anomaly_score_arrays(array[:,0],array[:,1],array[:,2])
+        # self.update_anomaly_score_arrays(array[:,0],array[:,1],array[:,2])
 
-            index = np.arange(20)
-            self.anomaly_score_plot1.plot(index, self.vibx_anomaly_scores, pen='orange', name="Anomaly Score 1")
-            self.anomaly_score_plot2.plot(index, self.viby_anomaly_scores, pen='purple', name="Anomaly Score 2")
-            self.anomaly_score_plot3.plot(index, self.vibz_anomaly_scores, pen='pink', name="Anomaly Score 3")
-            # Define anomaly thresholds
-            threshold = 0.8
-            self.anomaly_score_plot1.scatterPlot(index[self.vibx_anomaly_scores > threshold], 
-                                            self.vibx_anomaly_scores[self.vibx_anomaly_scores >threshold], 
-                                            pen=None, symbol='o', symbolBrush='r', symbolSize=6)
-            self.anomaly_score_plot2.scatterPlot(index[self.viby_anomaly_scores > threshold], 
-                                            self.viby_anomaly_scores[self.viby_anomaly_scores > threshold], 
-                                            pen=None, symbol='o', symbolBrush='r', symbolSize=6)
-            self.anomaly_score_plot3.scatterPlot(index[self.vibz_anomaly_scores > threshold], 
-                                            self.vibz_anomaly_scores[self.vibz_anomaly_scores > threshold], 
-                                            pen=None, symbol='o', symbolBrush='r', symbolSize=6)
+        # index = np.arange(20)
+        # self.anomaly_score_plot1.setData(index, self.vibx_anomaly_scores, pen='orange', name="Anomaly Score 1")
+        # self.anomaly_score_plot2.setData(index, self.viby_anomaly_scores, pen='purple', name="Anomaly Score 2")
+        # self.anomaly_score_plot3.setData(index, self.vibz_anomaly_scores, pen='pink', name="Anomaly Score 3")
+        # # Define anomaly thresholds
+        # threshold = 0.8
+        # self.anomaly_score_plot1.scatterPlot(index[self.vibx_anomaly_scores > threshold], 
+        #                                 self.vibx_anomaly_scores[self.vibx_anomaly_scores >threshold], 
+        #                                 pen=None, symbol='o', symbolBrush='r', symbolSize=6)
+        # self.anomaly_score_plot2.scatterPlot(index[self.viby_anomaly_scores > threshold], 
+        #                                 self.viby_anomaly_scores[self.viby_anomaly_scores > threshold], 
+        #                                 pen=None, symbol='o', symbolBrush='r', symbolSize=6)
+        # self.anomaly_score_plot3.scatterPlot(index[self.vibz_anomaly_scores > threshold], 
+        #                                 self.vibz_anomaly_scores[self.vibz_anomaly_scores > threshold], 
+        #                                 pen=None, symbol='o', symbolBrush='r', symbolSize=6)
         
 
     def display_image(self, label, image_data):
