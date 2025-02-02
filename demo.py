@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBox
 
 
 from multiprocessing import shared_memory
-from picamera2 import Picamera2
+#from picamera2 import Picamera2
 import adxl359
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from io import BytesIO
@@ -35,8 +35,8 @@ fig_shm = shared_memory.SharedMemory(create=True, size=np.prod(fig_shape) * np.u
 
 
 
-adxl359 = adxl359.ADXL359()  # Adjust according to your actual initialization code
-adxl359._initialize()
+# adxl359 = adxl359.ADXL359()  # Adjust according to your actual initialization code
+# adxl359._initialize()
 
 
 def figure_to_numpy(fig):
@@ -71,7 +71,11 @@ def update_fig():
     shared_image = np.ndarray(fig_shape, dtype=np.uint8, buffer=existing_shm.buf)
     fig, axs = plt.subplots(2, 2, figsize=(10, 8))
     while True:
-        x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object    
+        #x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object
+        x_data = np.random.rand(100)
+        y_data = np.random.rand(100)
+        z_data = np.random.rand(100)
+        temp_data = np.random.rand(100)    
         for ax in axs.flatten():
             ax.clear()
         axs[0, 0].plot(x_data)
@@ -96,11 +100,11 @@ def update_image():
     global camera_two_shm
     global camera_shape 
 
-    picam2_0 = Picamera2(0)
-    picam2_0.start()
+    # picam2_0 = Picamera2(0)
+    # picam2_0.start()
 
-    picam2_1 = Picamera2(1)
-    picam2_1.start()
+    # picam2_1 = Picamera2(1)
+    # picam2_1.start()
 
     # Attach to the shared memory block
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
@@ -110,9 +114,11 @@ def update_image():
     while True:
         time.sleep(1/60)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
-            one_image[:] = capture_camera_data(picam2_0)
+            # one_image[:] = capture_camera_data(picam2_0)
+            one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
         with camera_two_lock:
-            two_image[:] =capture_camera_data(picam2_1)
+            # two_image[:] =capture_camera_data(picam2_1)
+            two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
 
 
 
@@ -209,12 +215,6 @@ class MainWindow(QMainWindow):
         self.camera_thread.camera_feed_signal.connect(self.update_camera_label)
         self.adxl359_thread.adxl359_plot_signal.connect(self.update_adxl359_label)
 
-        # Start both threads
-        # self.camera_thread.start()
-        # self.adxl359_thread.start()
-
-        # # Initial image update
-        # self.update_camera_feed()
         self.sensor_processes = multiprocessing.Process(target=update_fig)
         self.sensor_processes.start()
 
@@ -276,6 +276,7 @@ class MainWindow(QMainWindow):
 
     def update_adxl359_label(self,plot):
         self.display_image(self.image_label3, plot)    
+
     def display_image(self, label, image_data):
         # Convert NumPy array to QImage
         height, width, _ = image_data.shape

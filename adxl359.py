@@ -1,7 +1,6 @@
 
 import smbus
 import time
-from gpiozero import LED
 from time import sleep
 import spidev
 
