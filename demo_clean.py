@@ -33,6 +33,156 @@ adxl359_shm = shared_memory.SharedMemory(create=True,size=np.prod(adxl359_data_s
 
 
 
+global imx500 
+global intrinsics
+global args 
+global last_results
+global picam2_1
+
+
+import argparse
+import sys
+from functools import lru_cache
+
+import cv2
+import numpy as np
+
+from picamera2 import MappedArray, Picamera2
+from picamera2.devices import IMX500
+from picamera2.devices.imx500 import (NetworkIntrinsics,
+                                      postprocess_nanodet_detection)
+
+last_detections = []
+
+
+class Detection:
+    def __init__(self, coords, category, conf, metadata):
+        """Create a Detection object, recording the bounding box, category and confidence."""
+        self.category = category
+        self.conf = conf
+        self.box = imx500.convert_inference_coords(coords, metadata, picam2_1)
+
+
+def parse_detections(metadata: dict):
+    """Parse the output tensor into a number of detected objects, scaled to the ISP output."""
+    global last_detections
+    bbox_normalization = intrinsics.bbox_normalization
+    bbox_order = intrinsics.bbox_order
+    threshold = args.threshold
+    iou = args.iou
+    max_detections = args.max_detections
+
+    np_outputs = imx500.get_outputs(metadata, add_batch=True)
+    input_w, input_h = imx500.get_input_size()
+    if np_outputs is None:
+        return last_detections
+    if intrinsics.postprocess == "nanodet":
+        boxes, scores, classes = \
+            postprocess_nanodet_detection(outputs=np_outputs[0], conf=threshold, iou_thres=iou,
+                                          max_out_dets=max_detections)[0]
+        from picamera2.devices.imx500.postprocess import scale_boxes
+        boxes = scale_boxes(boxes, 1, 1, input_h, input_w, False, False)
+    else:
+        boxes, scores, classes = np_outputs[0][0], np_outputs[1][0], np_outputs[2][0]
+        if bbox_normalization:
+            boxes = boxes / input_h
+
+        if bbox_order == "xy":
+            boxes = boxes[:, [1, 0, 3, 2]]
+        boxes = np.array_split(boxes, 4, axis=1)
+        boxes = zip(*boxes)
+
+    last_detections = [
+        Detection(box, category, score, metadata)
+        for box, score, category in zip(boxes, scores, classes)
+        if score > threshold
+    ]
+    return last_detections
+
+
+@lru_cache
+def get_labels():
+    labels = intrinsics.labels
+
+    if intrinsics.ignore_dash_labels:
+        labels = [label for label in labels if label and label != "-"]
+    return labels
+
+
+def draw_detections(request, stream="main"):
+    """Draw the detections for this request onto the ISP output."""
+    detections = last_results
+    if detections is None:
+        return
+    labels = get_labels()
+    with MappedArray(request, stream) as m:
+        for detection in detections:
+            x, y, w, h = detection.box
+            label = f"{labels[int(detection.category)]} ({detection.conf:.2f})"
+
+            # Calculate text size and position
+            (text_width, text_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            text_x = x + 5
+            text_y = y + 15
+
+            # Create a copy of the array to draw the background with opacity
+            overlay = m.array.copy()
+
+            # Draw the background rectangle on the overlay
+            cv2.rectangle(overlay,
+                          (text_x, text_y - text_height),
+                          (text_x + text_width, text_y + baseline),
+                          (255, 255, 255),  # Background color (white)
+                          cv2.FILLED)
+
+            alpha = 0.30
+            cv2.addWeighted(overlay, alpha, m.array, 1 - alpha, 0, m.array)
+
+            # Draw text on top of the background
+            cv2.putText(m.array, label, (text_x, text_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+            # Draw detection box
+            cv2.rectangle(m.array, (x, y), (x + w, y + h), (0, 255, 0, 0), thickness=2)
+
+        if intrinsics.preserve_aspect_ratio:
+            b_x, b_y, b_w, b_h = imx500.get_roi_scaled(request)
+            color = (255, 0, 0)  # red
+            cv2.putText(m.array, "ROI", (b_x + 5, b_y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            cv2.rectangle(m.array, (b_x, b_y), (b_x + b_w, b_y + b_h), (255, 0, 0, 0))
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, help="Path of the model",
+                        default="/usr/share/imx500-models/imx500_network_ssd_mobilenetv2_fpnlite_320x320_pp.rpk")
+    parser.add_argument("--fps", type=int, help="Frames per second")
+    parser.add_argument("--bbox-normalization", action=argparse.BooleanOptionalAction, help="Normalize bbox")
+    parser.add_argument("--bbox-order", choices=["yx", "xy"], default="yx",
+                        help="Set bbox order yx -> (y0, x0, y1, x1) xy -> (x0, y0, x1, y1)")
+    parser.add_argument("--threshold", type=float, default=0.55, help="Detection threshold")
+    parser.add_argument("--iou", type=float, default=0.65, help="Set iou threshold")
+    parser.add_argument("--max-detections", type=int, default=10, help="Set max detections")
+    parser.add_argument("--ignore-dash-labels", action=argparse.BooleanOptionalAction, help="Remove '-' labels ")
+    parser.add_argument("--postprocess", choices=["", "nanodet"],
+                        default=None, help="Run post process of type")
+    parser.add_argument("-r", "--preserve-aspect-ratio", action=argparse.BooleanOptionalAction,
+                        help="preserve the pixel aspect ratio of the input tensor")
+    parser.add_argument("--labels", type=str,
+                        help="Path to the labels file")
+    parser.add_argument("--print-intrinsics", action="store_true",
+                        help="Print JSON network_intrinsics then exit")
+    return parser.parse_args()
+
+
+
+
+from enum import Enum
+
+class Model(Enum):
+    MODEL1 = 1
+    MODEL2 = 2
+    NOMODEL = 3
 
 
 # adxl359 = adxl359.ADXL359()  # Adjust according to your actual initialization code
@@ -58,39 +208,99 @@ def update_adxl359_shm():
             shared_adxl359_data[:] =np.column_stack((x_data, y_data, z_data, temp))     
 
 
-def capture_camera_data(camera):
-    # Create a random image (height=240, width=320, RGB)
-    frame  = camera.capture_array().astype(np.uint8)
-    frame =frame[:, :, :3]
-    return frame
+def update_imx500_shm(Model,event):
 
-
-
-def update_image():
+    print("my model is model number" ,Model)
     global camera_one_lock
     global camera_one_shm
     global camera_two_lock
     global camera_two_shm
     global camera_shape 
+    global last_results
+    global args
+    global picam2_1
 
     picam2_0 = Picamera2(0)
     picam2_0.start()
 
-    picam2_1 = Picamera2(1)
+    # picam2_1 = Picamera2(1)
+    # picam2_1.start()
+
+    args = get_args()
+    global imx500 
+    imx500 = IMX500(args.model)
+    global intrinsics 
+    intrinsics = imx500.network_intrinsics
+
+
+
+    
+
+    # This must be called before instantiation of Picamera2
+    
+    args = get_args()
+
+    # This must be called before instantiation of Picamera2
+    imx500 = IMX500(args.model)
+    intrinsics = imx500.network_intrinsics
+    if not intrinsics:
+        intrinsics = NetworkIntrinsics()
+        intrinsics.task = "object detection"
+    elif intrinsics.task != "object detection":
+        print("Network is not an object detection task", file=sys.stderr)
+        exit()
+
+    # Override intrinsics from args
+    for key, value in vars(args).items():
+        if key == 'labels' and value is not None:
+            with open(value, 'r') as f:
+                intrinsics.labels = f.read().splitlines()
+        elif hasattr(intrinsics, key) and value is not None:
+            setattr(intrinsics, key, value)
+
+    # Defaults
+    if intrinsics.labels is None:
+        with open("assets/coco_labels.txt", "r") as f:
+            intrinsics.labels = f.read().splitlines()
+    intrinsics.update_with_defaults()
+
+    if args.print_intrinsics:
+        print(intrinsics)
+        exit()
+
+    picam2_1 = Picamera2(imx500.camera_num)
+    config = picam2_1.create_preview_configuration(controls={"FrameRate": intrinsics.inference_rate}, buffer_count=12)
+
+    imx500.show_network_fw_progress_bar()
     picam2_1.start()
+
+    if intrinsics.preserve_aspect_ratio:
+        imx500.set_auto_aspect_ratio()
+
+    last_results = None
+    picam2_1.pre_callback = draw_detections
+
+
+
+
 
     # Attach to the shared memory block
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
-    while True:
+    while not event.is_set():
         time.sleep(1/60)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
-            one_image[:] = capture_camera_data(picam2_0)
+
+            
+            one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
+
+
             #one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
         with camera_two_lock:
-            two_image[:] =capture_camera_data(picam2_1)
+            last_results = parse_detections(picam2_1.capture_metadata())
+            two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
             #two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
 
 class CameraThread(QThread):
@@ -162,6 +372,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.imx500_height = 480
+        self.imx500_height = 640 
+        self.imx500_fps = 60
+        self.adxl359_sample_rate = 1000
+        self.adxl359_sample_length = 1000 
+
+
         # Set up the window to match the screen size
         screen = QDesktopWidget().screenGeometry()
         screen_width = screen.width()
@@ -232,13 +449,15 @@ class MainWindow(QMainWindow):
         # Create Apply Model button and dropdown
         apply_model_button = QPushButton('Apply Model', self)
         apply_model_button.clicked.connect(self.apply_model)  # Connect to a function for applying model
+        self.model = Model.NOMODEL
         
         # Create dropdown for model selection
         self.model_dropdown = QComboBox(self)
-        self.model_dropdown.addItem("Model 1")
-        self.model_dropdown.addItem("Model 2")
-        self.model_dropdown.addItem("No Model")
 
+        for model in Model:
+            self.model_dropdown.addItem(model.name, model)
+
+  
         # Create a horizontal layout for Apply Model button and dropdown
         apply_model_layout = QHBoxLayout()
         apply_model_layout.addWidget(apply_model_button)
@@ -267,8 +486,6 @@ class MainWindow(QMainWindow):
         self.plot1_item = self.plot1.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='b')
         self.plot2_item =self.plot2.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='g')
         self.plot3_item =self.plot3.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='r')
-
-
 
         # Update the plot data
         # Add the plots to the vertical layout
@@ -303,7 +520,6 @@ class MainWindow(QMainWindow):
         # Add the anomaly plot layout to the bottom row (right side)
         bottom_layout.addLayout(anomaly_plot_layout)
 
-        
         self.vibx = None
         self.viby = None
         self.vibz = None
@@ -315,6 +531,8 @@ class MainWindow(QMainWindow):
 
         # Set the central widget layout
         central_widget.setLayout(main_layout)
+  
+
   
 
         # # Set up the QTimer to update the images every 2 seconds (2000ms)
@@ -329,25 +547,38 @@ class MainWindow(QMainWindow):
 
         self.camera_thread = CameraThread(self)
         self.adxl359_thread = Adxl359Thread(self)
-        self.camera_thread.setPriority(QThread.LowPriority)
-        self.adxl359_thread.setPriority(QThread.TimeCriticalPriority)
+        
 
         # # Connect the thread signals to slots in the main window
         self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
         self.adxl359_thread.adxl359_plot_signal.connect(self.update_adxl359_feed)
 
 
+
+        
         self.sensor_processes = multiprocessing.Process(target=update_adxl359_shm)
         self.sensor_processes.start()
 
-        self.camera_processes = multiprocessing.Process(target=update_image)
+        self.terminate_event = multiprocessing.Event()
+        self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
         self.camera_processes.start()
  
 
     def apply_model(self):
         """Handle the Apply Model button action."""
         selected_model = self.model_dropdown.currentText()
-        print(f"Applied {selected_model}")
+
+        if self.model== selected_model:
+            print("no change")
+        else:
+            self.model= selected_model
+            if self.camera_processes.is_alive():
+                self.terminate_event.set()
+                self.camera_processes.join()
+                print("child is done")
+                self.terminate_event = multiprocessing.Event()
+                self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
+                self.camera_processes.start()
 
     def exit_application(self):
         global camera_one_shm 
@@ -389,10 +620,11 @@ class MainWindow(QMainWindow):
 
     def start_camera_thread(self):
         self.camera_thread.start()
-        
+        self.camera_thread.setPriority(QThread.TimeCriticalPriority)
 
     def start_sensor_thread(self):
         self.adxl359_thread.start()
+        self.adxl359_thread.setPriority(QThread.LowPriority)
 
     def update_camera_feed(self,camera_data_tuple):
 
@@ -421,26 +653,27 @@ class MainWindow(QMainWindow):
         self.vibz_anomaly_scores[0] = vibx_score
 
     def update_adxl359_feed(self,array):
+        pass
     
-        self.vibx = array[:, 0]
-        self.viby = array[:, 1]
-        self.vibz = array[:, 2]
-        self.temp = array[0, 3]
+        # self.vibx = array[:, 0]
+        # self.viby = array[:, 1]
+        # self.vibz = array[:, 2]
+        # self.temp = array[0, 3]
 
-        self.plot1_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibx)
-        self.plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),self.viby)
-        self.plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibz)
-        self.temperature_label.setText(f"Temperature: {self.temp:.2f} °C")
+        # self.plot1_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibx)
+        # self.plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),self.viby)
+        # self.plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibz)
+        # self.temperature_label.setText(f"Temperature: {self.temp:.2f} °C")
 
 
-        self.update_anomaly_score_arrays(array[:,0],array[:,1],array[:,2])
+        # self.update_anomaly_score_arrays(array[:,0],array[:,1],array[:,2])
 
-        index = np.arange(20)
-        self.anomaly_score_plot1_item.setData(index, self.vibx_anomaly_scores)
-        self.anomaly_score_plot2_item.setData(index, self.viby_anomaly_scores)
-        self.anomaly_score_plot3_item.setData(index, self.vibz_anomaly_scores)
-        # Define anomaly thresholds
-        threshold = 0.8
+        # index = np.arange(20)
+        # self.anomaly_score_plot1_item.setData(index, self.vibx_anomaly_scores)
+        # self.anomaly_score_plot2_item.setData(index, self.viby_anomaly_scores)
+        # self.anomaly_score_plot3_item.setData(index, self.vibz_anomaly_scores)
+        # # Define anomaly thresholds
+        # threshold = 0.8
         # self.anomaly_score_plot1.scatterPlot(index[self.vibx_anomaly_scores > threshold], 
         #                                 self.vibx_anomaly_scores[self.vibx_anomaly_scores >threshold], 
         #                                 pen=None, symbol='o', symbolBrush='r', symbolSize=6)
