@@ -6,14 +6,14 @@
         "AeEnable": false,
         "ExposureValue": 0.0,
         "AeFlickerMode": 0,
-        "ExposureTime": 30000,
+        "ExposureTime": 10000,
         "AeExposureMode": 0,
         "AwbEnable": false,
         "AwbMode": 0,
         "CnnEnableInputTensor": false,
         "AeConstraintMode": 0,
         "Saturation": 1.0,
-        "Brightness": 1.0,
+        "Brightness": 0.0,
         "Sharpness": 16.0
     },
     "rotation": {
