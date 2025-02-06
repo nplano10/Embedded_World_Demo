@@ -16,7 +16,7 @@ History       :
 import time
 import cv2
 import numpy as np
-from two_camera_anomaly_detection.sort import Sort
+from sony_code.sort import Sort
 from functools import lru_cache
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Dict, Set

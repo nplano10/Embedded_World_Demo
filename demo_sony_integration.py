@@ -8,7 +8,6 @@ from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBox
 from multiprocessing import shared_memory
 from picamera2 import Picamera2
 import adxl359
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from io import BytesIO
 import cv2
 import copy
@@ -37,8 +36,6 @@ class Model(Enum):
     MODEL1 = 1
     MODEL2 = 2
     NOMODEL = 3
-
-
 # adxl359 = adxl359.ADXL359()  # Adjust according to your actual initialization code
 # adxl359._initialize()
 
@@ -61,18 +58,13 @@ def update_adxl359_shm():
         with adxl359_data_lock:                                        
             shared_adxl359_data[:] =np.column_stack((x_data, y_data, z_data, temp))     
 
-
-
-
-
-
 import argparse
 from multiprocessing import Process, Queue
 from sony_code.imx500_object_detection_SORT import IMX500Detector
 from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
 import time
 
-def anomaly_process(bbox_queue, results_queue, args):
+def anomaly_process(event,bbox_queue, results_queue, args):
 
     global camera_two_lock
     global camera_two_shm
@@ -83,13 +75,13 @@ def anomaly_process(bbox_queue, results_queue, args):
     two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
 
-    while True:
+    while not event.is_set():
         time.sleep(1/60)
         with camera_two_lock:
             #last_results = parse_detections(picam2_1.capture_metadata())
             two_image[:] =detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
-def detection_process(bbox_queue, results_queue, args):
+def detection_process(event,bbox_queue, results_queue, args):
     global camera_one_lock
     global camera_one_shm
     global camera_shape 
@@ -99,7 +91,7 @@ def detection_process(bbox_queue, results_queue, args):
 
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
-    while True:
+    while not event.is_set():
         time.sleep(1/60)
         metadata = detector.picam2.capture_metadata()
         detector.last_results = detector.parse_detections(
@@ -111,8 +103,33 @@ def detection_process(bbox_queue, results_queue, args):
         detector.update_bbox_queue(bbox_queue)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             one_image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
+
+def no_model_process(event):
+    global camera_one_lock
+    global camera_one_shm
+    global camera_two_lock
+    global camera_two_shm
+    global camera_shape 
+    picam2_0 = Picamera2(0)
+    picam2_0.start()
+    picam2_1 = Picamera2(1)
+    picam2_1.start()
+    # Attach to the shared memory block
+    one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
+    one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
+    two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
+    two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
+    while not event.is_set():
+        time.sleep(1/60)
+        with camera_one_lock:  # Ensure exclusive access to the shared memory
+            one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
+            #one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
+        with camera_two_lock:
+            #last_results = parse_detections(picam2_1.capture_metadata())
+            two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
+            #two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
         
-def update_imx500_shm(Model,event):
+def update_imx500_shm(selected_model,event):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
     CAMERA_DISTANCE_PIXELS = 210  # Distance in pixels
@@ -123,8 +140,8 @@ def update_imx500_shm(Model,event):
     results_queue = Queue()  # Queue for receiving classification results
 
     pill_detection_args = argparse.Namespace(
-        model="two_camera_anomaly_detection/Models/Detection/network.rpk", 
-        labels="two_camera_anomaly_detection/Models/Detection/labels.txt",
+        model="sony_code/Models/Detection/network.rpk", 
+        labels="sony_code/Models/Detection/labels.txt",
         camera_index=0,
         fps=20,
         max_disappeared=20,
@@ -134,9 +151,8 @@ def update_imx500_shm(Model,event):
         pixels_per_mm=PIXELS_PER_MM,
         detection_region=DETECTION_REGION
     )
-
     anomaly_detection_args = argparse.Namespace(
-        model="two_camera_anomaly_detection/Models/Anomaly/network.rpk",
+        model="sony_code/Models/Anomaly/network.rpk",
         camera_index=1,
         fps=20,
         image_threshold=0.45,
@@ -145,23 +161,23 @@ def update_imx500_shm(Model,event):
         roi_box_size=128,
         pixels_per_mm=PIXELS_PER_MM
     )
+    pill_detection_proc = Process(target=detection_process, args=(event,bbox_queue, results_queue, pill_detection_args))
+    anomaly_detection_proc = Process(target=anomaly_process, args=(event,bbox_queue, results_queue, anomaly_detection_args))
+    no_model_proc = Process(target=no_model_process ,args=(event,))
 
-    pill_detection_proc = Process(target=detection_process, args=(bbox_queue, results_queue, pill_detection_args))
-    anomaly_detection_proc = Process(target=anomaly_process, args=(bbox_queue, results_queue, anomaly_detection_args))
+    print(selected_model)
 
-
-    pill_detection_proc.start()
-    anomaly_detection_proc.start()
-
-    try:
+    if selected_model == Model.MODEL1:
+        pill_detection_proc.start()
+        anomaly_detection_proc.start()
         pill_detection_proc.join()
         anomaly_detection_proc.join()
-    except KeyboardInterrupt:
-        print("Stopping processes...")
-        pill_detection_proc.terminate()
-        anomaly_detection_proc.terminate()
+    
+    else:
+        no_model_proc.start()
+        no_model_proc.join()
 
-
+    
 
 
 def update_imx500_shm_old(Model,event):
@@ -458,7 +474,11 @@ class MainWindow(QMainWindow):
 
     def apply_model(self):
         """Handle the Apply Model button action."""
-        selected_model = self.model_dropdown.currentText()
+        selected_model = self.model_dropdown.currentData()
+
+        print(selected_model)
+
+        
 
         if self.model== selected_model:
             print("no change")
@@ -493,7 +513,9 @@ class MainWindow(QMainWindow):
 
         if self.camera_processes.is_alive():
             print("Terminating camera_processes as it is still running...")
-            self.camera_processes.terminate()  # Forcefully terminate the process
+            self.terminate_event.set()
+            self.camera_processes.join()
+            print("child is done")
 
         print("Cleaning mem")
         camera_one_shm.close()  # Detach from the shared memory
