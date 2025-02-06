@@ -76,7 +76,7 @@ def anomaly_process(event,bbox_queue, results_queue, args):
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
 
     while not event.is_set():
-        time.sleep(1/60)
+        time.sleep(1/40)
         with camera_two_lock:
             #last_results = parse_detections(picam2_1.capture_metadata())
             two_image[:] =detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
@@ -92,7 +92,7 @@ def detection_process(event,bbox_queue, results_queue, args):
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     while not event.is_set():
-        time.sleep(1/60)
+        time.sleep(1/40)
         metadata = detector.picam2.capture_metadata()
         detector.last_results = detector.parse_detections(
             metadata,
@@ -120,7 +120,7 @@ def no_model_process(event):
     two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
     while not event.is_set():
-        time.sleep(1/60)
+        time.sleep(1/40)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
             #one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
@@ -128,6 +128,8 @@ def no_model_process(event):
             #last_results = parse_detections(picam2_1.capture_metadata())
             two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
             #two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
+
+
         
 def update_imx500_shm(selected_model,event):
 
@@ -202,7 +204,7 @@ def update_imx500_shm_old(Model,event):
     two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
     while not event.is_set():
-        time.sleep(1/60)
+        time.sleep(1/40)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
             #one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
@@ -446,7 +448,7 @@ class MainWindow(QMainWindow):
         # # Set up the QTimer to update the images every 2 seconds (2000ms)
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.start_camera_thread)
-        self.camera_timer.start(int(1000/60))  # Update every 2000ms (2 seconds)
+        self.camera_timer.start(int(1000/40))  # Update every 2000ms (2 seconds)
 
 
         self.adxl359_timer= QTimer(self)
