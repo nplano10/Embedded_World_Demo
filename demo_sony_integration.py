@@ -33,9 +33,10 @@ adxl359_shm = shared_memory.SharedMemory(create=True,size=np.prod(adxl359_data_s
 from enum import Enum
 
 class Model(Enum):
-    MODEL1 = 1
-    MODEL2 = 2
-    NOMODEL = 3
+    OBJECT = 1
+    SMARTIE = 2
+    SONY = 3
+    NOMODEL = 4
 # adxl359 = adxl359.ADXL359()  # Adjust according to your actual initialization code
 # adxl359._initialize()
 
@@ -62,6 +63,9 @@ import argparse
 from multiprocessing import Process, Queue
 from sony_code.imx500_object_detection_SORT import IMX500Detector
 from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
+from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
+import sony_code.imx500_object_detection_demo as ob_det
+
 import time
 
 def anomaly_process(event,bbox_queue, results_queue, args):
@@ -129,6 +133,39 @@ def no_model_process(event):
             two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
             #two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
 
+def obj_detection_process(event,mode):
+
+    global camera_one_lock
+    global camera_one_shm
+    global camera_two_lock
+    global camera_two_shm
+    global camera_shape 
+    # Attach to the shared memory block
+    one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
+    one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
+    two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
+    two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
+    if(mode == 0):
+        camera1 = IMX500ObjectDetector(ob_det.sony_args(),1)
+        camera2 = IMX500ObjectDetector(ob_det.sony_args(),0)   
+    if(mode ==1 ):
+        camera1 = IMX500ObjectDetector(ob_det.sue_args(),1)
+        camera2 = IMX500ObjectDetector(ob_det.sue_args(),0)   
+    camera1.picam2.pre_callback = camera1.draw_detections
+    camera2.picam2.pre_callback = camera2.draw_detections
+    while not event.is_set():
+        time.sleep(1/40)
+        with camera_one_lock:  # Ensure exclusive access to the shared memory
+            camera1.last_results = camera1.parse_detections(camera1.picam2.capture_metadata())
+            one_image[:] = camera1.picam2.capture_array().astype(np.uint8)[:, :, :3]
+        with camera_two_lock:
+            camera2.last_results = camera2.parse_detections(camera2.picam2.capture_metadata())
+            two_image[:] =camera2.picam2.capture_array().astype(np.uint8)[:, :, :3]
+
+
+        
+        
+
 
         
 def update_imx500_shm(selected_model,event):
@@ -163,21 +200,34 @@ def update_imx500_shm(selected_model,event):
         roi_box_size=128,
         pixels_per_mm=PIXELS_PER_MM
     )
+
+
+    obj_detection_proc = Process(target=obj_detection_process, args=(event,0))
+    smartie_detection_proc = Process(target=obj_detection_process, args=(event,1))
+
     pill_detection_proc = Process(target=detection_process, args=(event,bbox_queue, results_queue, pill_detection_args))
     anomaly_detection_proc = Process(target=anomaly_process, args=(event,bbox_queue, results_queue, anomaly_detection_args))
     no_model_proc = Process(target=no_model_process ,args=(event,))
 
     print(selected_model)
 
-    if selected_model == Model.MODEL1:
+    if selected_model == Model.SONY:
         pill_detection_proc.start()
         anomaly_detection_proc.start()
         pill_detection_proc.join()
         anomaly_detection_proc.join()
     
-    else:
+    if selected_model == Model.NOMODEL:
         no_model_proc.start()
         no_model_proc.join()
+
+    if selected_model == Model.OBJECT:
+        obj_detection_proc.start()
+        obj_detection_proc.join()
+
+    if selected_model == Model.SMARTIE:
+        smartie_detection_proc.start()
+        smartie_detection_proc.join()
 
     
 

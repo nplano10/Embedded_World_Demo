@@ -113,7 +113,7 @@ def draw_detections(request, stream="main"):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, help="Path of the model",
-                        default="../models/object/network.rpk")
+                        default="/usr/share/imx500-models/imx500_network_ssd_mobilenetv2_fpnlite_320x320_pp.rpk")
     parser.add_argument("--fps", type=int, help="Frames per second")
     parser.add_argument("--bbox-normalization", action=argparse.BooleanOptionalAction, help="Normalize bbox")
     parser.add_argument("--bbox-order", choices=["yx", "xy"], default="yx",
@@ -127,8 +127,7 @@ def get_args():
     parser.add_argument("-r", "--preserve-aspect-ratio", action=argparse.BooleanOptionalAction,
                         help="preserve the pixel aspect ratio of the input tensor")
     parser.add_argument("--labels", type=str,
-                        help="Path to the labels file",
-                        default="../models/object/labels.txt")
+                        help="Path to the labels file")
     parser.add_argument("--print-intrinsics", action="store_true",
                         help="Print JSON network_intrinsics then exit")
     return parser.parse_args()
