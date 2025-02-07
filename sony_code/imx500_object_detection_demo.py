@@ -52,9 +52,9 @@ class IMX500ObjectDetector:
         self.picam2 = Picamera2(self.imx500.camera_num)
         config = self.picam2.create_preview_configuration(controls={"FrameRate": self.intrinsics.inference_rate}, buffer_count=12)
         
-        # with open("../desk_lamp_settings.json", 'r') as file:
-        #     controls = json.load(file)
-        #     self.picam2.set_controls(controls["controls"])
+        with open("desk_lamp_settings.json", 'r') as file:
+            controls = json.load(file)
+            self.picam2.set_controls(controls["controls"])
 
         self.imx500.show_network_fw_progress_bar()
         #self.picam2.start(config, show_preview=True)
@@ -223,8 +223,8 @@ def sony_args():
 
 
 if __name__ == "__main__":
-    camera1 = IMX500ObjectDetector(sony_args(),1)
-    camera2 = IMX500ObjectDetector(sony_args(),0)   
+    camera1 = IMX500ObjectDetector(sue_args(),1)
+    camera2 = IMX500ObjectDetector(sue_args(),0)   
     camera1.picam2.pre_callback = camera1.draw_detections
     camera2.picam2.pre_callback = camera2.draw_detections
     while True:
