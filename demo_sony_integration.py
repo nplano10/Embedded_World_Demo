@@ -76,6 +76,7 @@ def anomaly_process(event,bbox_queue, results_queue, args):
     detector = IMX500AnomalyDetector(args)
     detector.picam2.pre_callback = lambda req: detector.process_frame(
         req, bbox_queue, results_queue)
+    print("Done loading model")
     two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
 
@@ -92,6 +93,7 @@ def detection_process(event,bbox_queue, results_queue, args):
 
     detector = IMX500Detector(args)
     detector.picam2.pre_callback = lambda req: detector.draw_detections(req, results_queue)
+    print("Done loading model")
 
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
@@ -153,7 +155,14 @@ def obj_detection_process(event,mode):
         camera2 = IMX500ObjectDetector(ob_det.sue_args(),0)   
     camera1.picam2.pre_callback = camera1.draw_detections
     camera2.picam2.pre_callback = camera2.draw_detections
+    print("Done loading model")
+    i=0
     while not event.is_set():
+        i=i+1
+        if(i==80):
+            i=0
+            print("in obj det")
+        
         time.sleep(1/40)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             camera1.last_results = camera1.parse_detections(camera1.picam2.capture_metadata())
@@ -202,12 +211,12 @@ def update_imx500_shm(selected_model,event):
     )
 
 
-    obj_detection_proc = Process(target=obj_detection_process, args=(event,0))
-    smartie_detection_proc = Process(target=obj_detection_process, args=(event,1))
+    #obj_detection_proc = Process(target=obj_detection_process, args=(event,0))
+    #smartie_detection_proc = Process(target=obj_detection_process, args=(event,1))
 
     pill_detection_proc = Process(target=detection_process, args=(event,bbox_queue, results_queue, pill_detection_args))
     anomaly_detection_proc = Process(target=anomaly_process, args=(event,bbox_queue, results_queue, anomaly_detection_args))
-    no_model_proc = Process(target=no_model_process ,args=(event,))
+    #no_model_proc = Process(target=no_model_process ,args=(event,))
 
     print(selected_model)
 
@@ -218,16 +227,14 @@ def update_imx500_shm(selected_model,event):
         anomaly_detection_proc.join()
     
     if selected_model == Model.NOMODEL:
-        no_model_proc.start()
-        no_model_proc.join()
+       no_model_process(event)
 
     if selected_model == Model.OBJECT:
-        obj_detection_proc.start()
-        obj_detection_proc.join()
+        
+        obj_detection_process(event,0)
 
     if selected_model == Model.SMARTIE:
-        smartie_detection_proc.start()
-        smartie_detection_proc.join()
+        obj_detection_process(event,1)
 
     
 
