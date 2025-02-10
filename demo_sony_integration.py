@@ -165,7 +165,8 @@ def obj_detection_process(event,mode):
         
         time.sleep(1/40)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
-            camera1.last_results = camera1.parse_detections(camera1.picam2.capture_metadata())
+            meta_data = camera1.picam2.capture_metadata()
+            camera1.last_results = camera1.parse_detections(meta_data)
             one_image[:] = camera1.picam2.capture_array().astype(np.uint8)[:, :, :3]
         with camera_two_lock:
             camera2.last_results = camera2.parse_detections(camera2.picam2.capture_metadata())
@@ -508,9 +509,39 @@ class MainWindow(QMainWindow):
         self.camera_timer.start(int(1000/40))  # Update every 2000ms (2 seconds)
 
 
-        self.adxl359_timer= QTimer(self)
-        self.adxl359_timer.timeout.connect(self.start_sensor_thread)
-        self.adxl359_timer.start(int(10000))  # Update every 2000ms (2 seconds)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        #elf.adxl359_timer= QTimer(self)
+        #self.adxl359_timer.timeout.connect(self.start_sensor_thread)
+        #self.adxl359_timer.start(int(10000))  # Update every 2000ms (2 seconds)
 
         self.camera_thread = CameraThread(self)
         self.adxl359_thread = Adxl359Thread(self)
@@ -524,7 +555,7 @@ class MainWindow(QMainWindow):
 
         
         self.sensor_processes = multiprocessing.Process(target=update_adxl359_shm)
-        self.sensor_processes.start()
+        #self.sensor_processes.start()
 
         self.terminate_event = multiprocessing.Event()
         self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))

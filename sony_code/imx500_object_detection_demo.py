@@ -56,9 +56,6 @@ class IMX500ObjectDetector:
             controls = json.load(file)
             self.picam2.set_controls(controls["controls"])
 
-        self.imx500.show_network_fw_progress_bar()
-        #self.picam2.start(config, show_preview=True)
-
         self.picam2.start()
 
         if self.intrinsics.preserve_aspect_ratio:

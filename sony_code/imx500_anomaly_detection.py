@@ -65,8 +65,6 @@ class IMX500AnomalyDetector:
             controls={"FrameRate": args.fps},
             buffer_count=12
         )
-        self.imx500.show_network_fw_progress_bar()
-        #self.picam2.start(config, show_preview=True)
         self.picam2.start()
 
     def scale_bbox_to_detection(self, detection_bbox: Tuple[int, int, int, int, float, int],

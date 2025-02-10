@@ -160,8 +160,6 @@ class IMX500Detector:
             controls={"FrameRate": self.intrinsics.inference_rate},
             buffer_count=12
         )
-        self.imx500.show_network_fw_progress_bar()
-        #self.picam2.start(config, show_preview=True)
         self.picam2.start()
         if self.intrinsics.preserve_aspect_ratio:
             self.imx500.set_auto_aspect_ratio()
