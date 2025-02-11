@@ -23,9 +23,7 @@ from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
 import sony_code.imx500_object_detection_demo as ob_det
 import time
 from enum import Enum
-
-
-
+import json
 
 
 camera_one_lock = multiprocessing.Lock()
@@ -34,10 +32,12 @@ width,height, channels = 480, 640, 3
 camera_shape = (width,height, channels)
 camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_shape) * np.uint8().itemsize)
 camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_shape) * np.uint8().itemsize)
+
+
+
 adxl359_data_lock = lock = multiprocessing.Lock()
-data_length=1000
-adxl359_data_shape =(data_length,4)
-adxl359_shm = shared_memory.SharedMemory(create=True,size=np.prod(adxl359_data_shape)* np.float16().itemsize)
+adxl359_data_shape =(300,700,3,6)
+adxl359_shm = shared_memory.SharedMemory(create=True,size=np.prod(adxl359_data_shape)* np.uint8().itemsize)
 
 
 
@@ -46,18 +46,90 @@ class Model(Enum):
     SMARTIE = 2
     SONY = 3
     NOMODEL = 4
-#
+
+
+
+
+
+def pixmap_to_numpy(pixmap):
+    # Convert QPixmap to QImage
+    image = pixmap.toImage()
+    
+    # Ensure the image is in a format compatible with raw data access
+    image = image.convertToFormat(QImage.Format_RGB888)
+    
+    # Extract raw pixel data
+    width = image.width()
+    height = image.height()
+    
+    # Create a NumPy array from the raw pixel data
+    ptr = image.bits()
+    ptr.setsize(image.byteCount())
+    arr = np.array(ptr).reshape((height, width, 3))
+    return arr 
+
+
+def get_anomaly_scores(self,vibx,viby,vibz):
+        vibx_score= np.random.rand(1)[0]
+        viby_score= np.random.rand(1)[0]
+        vibz_score= np.random.rand(1)[0]
+        return vibx_score,viby_score,vibz_score
+    
+def update_anomaly_score_arrays(self,vibx_data,viby_data,vibz_data):
+    vibx_score,viby_score,vibz_score =get_anomaly_scores(vibx_data,viby_data,vibz_data)
+
+    
+    vibx_anomaly_scores = np.roll(vibx_anomaly_scores, 1)  # Shift elements to the right by 1
+    vibx_anomaly_scores[0] = vibx_score
+
+    viby_anomaly_scores = np.roll(viby_anomaly_scores, 1)  # Shift elements to the right by 1
+    viby_anomaly_scores[0] = viby_score
+
+    vibz_anomaly_scores = np.roll(vibz_anomaly_scores, 1)  # Shift elements to the right by 1
+    vibz_anomaly_scores[0] = vibz_score
 
 def update_adxl359_shm():
 
     #adxl359 = adxl359.ADXL359()  # Adjust according to your actual initialization code
    # adxl359._initialize()
+
+    plot1 = pg.PlotWidget(title="Vibration X Axis")
+    plot2 = pg.PlotWidget(title="Vibration Y Axis")
+    plot3 = pg.PlotWidget(title="Vibration Z Axis")
+
+    plot1.setFixedWidth(700)
+    plot1.setFixedHeight(300)
+
+    plot2.setFixedWidth(700)
+    plot2.setFixedHeight(300)
+
+    plot3.setFixedWidth(700)
+    plot3.setFixedHeight(300)
+
+    plot1_item = plot1.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='b')
+    plot2_item =plot2.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='g')
+    plot3_item =plot3.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='r')
+
+
+    # Create the three anomaly plots
+    anomaly_score_plot1 = pg.PlotWidget(title="Anomaly Plot 1")
+    anomaly_score_plot2 = pg.PlotWidget(title="Anomaly Plot 2")
+    anomaly_score_plot3 = pg.PlotWidget(title="Anomaly Plot 3")
+
+    vibx_anomaly_scores = np.zeros(20)
+    viby_anomaly_scores = np.zeros(20)
+    vibz_anomaly_scores = np.zeros(20)
+
+    anomaly_score_plot1_item = anomaly_score_plot1.plot(np.arange(20), vibx_anomaly_scores, pen='orange', name="Anomaly Score 1")
+    anomaly_score_plot2_item = anomaly_score_plot2.plot(np.arange(20), viby_anomaly_scores, pen='purple', name="Anomaly Score 2")
+    anomaly_score_plot3_item = anomaly_score_plot3.plot(np.arange(20), vibz_anomaly_scores, pen='pink', name="Anomaly Score 3")
+
     global adxl359_data_lock
     global adxl359_shm
     global adxl359_data_shape
     existing_shm = shared_memory.SharedMemory(name=adxl359_shm.name)
     # Create a NumPy array from the shared memory buffer
-    shared_adxl359_data = np.ndarray(adxl359_data_shape, dtype=np.float16, buffer=existing_shm.buf)
+    shared_adxl359_data = np.ndarray(adxl359_data_shape, dtype=np.int8, buffer=existing_shm.buf)
     while True:
         #x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object
         time.sleep(1)
@@ -65,8 +137,30 @@ def update_adxl359_shm():
         y_data = np.random.rand(1000).astype(np.float16)
         z_data = np.random.rand(1000).astype(np.float16)
         temp = np.random.rand(1000).astype(np.float16)
+
+        plot1_item.setData(np.linspace(0, 1000, 1000).tolist(),x_data)
+        plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),y_data)
+        plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),z_data)
+
+        # pixmap_to_numpy(plot2.grab())
+        # pixmap_to_numpy(plot3.grab())
+
+        # temperature_label.setText(f"Temperature: {temp:.2f} °C")
+        # update_anomaly_score_arrays(x_data,y_data,z_data)
+        # index = np.arange(20)
+        # anomaly_score_plot1_item.setData(index, vibx_anomaly_scores)
+        # anomaly_score_plot2_item.setData(index, viby_anomaly_scores)
+        # anomaly_score_plot3_item.setData(index, vibz_anomaly_scores)   
+
         with adxl359_data_lock:                                        
-            shared_adxl359_data[:] =np.column_stack((x_data, y_data, z_data, temp))     
+            shared_adxl359_data[:, :, :, 0] =pixmap_to_numpy(plot1.grab())
+            shared_adxl359_data[:, :, :, 1] =pixmap_to_numpy(plot2.grab()) 
+            shared_adxl359_data[:, :, :, 2] =pixmap_to_numpy(plot3.grab())
+            shared_adxl359_data[:, :, :, 3] =pixmap_to_numpy(plot1.grab())
+            shared_adxl359_data[:, :, :, 4] =pixmap_to_numpy(plot2.grab()) 
+            shared_adxl359_data[:, :, :, 5] =pixmap_to_numpy(plot3.grab())   
+
+
 
 
 def anomaly_process(event,bbox_queue, results_queue, args):
@@ -117,23 +211,36 @@ def no_model_process(event):
     global camera_two_shm
     global camera_shape 
     picam2_0 = Picamera2(0)
-    picam2_0.start()
+    picam2_0.video_configuration.controls.FrameRate = 30.0
+    picam2_0.video_configuration.size = (640, 480)
+    picam2_0.start("video")
+
     picam2_1 = Picamera2(1)
-    picam2_1.start()
+    picam2_1.video_configuration.controls.FrameRate = 30.0
+    picam2_1.video_configuration.size = (640, 480)
+    picam2_1.start("video")
     # Attach to the shared memory block
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
+    start=0
+    stop=0
     while not event.is_set():
-        time.sleep(1/40)
+        # start = time.time()
+        time.sleep(1/30)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
+            # start = time.time()
             one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
+            # stop = time.time()
+            # print("update shared mem  freq ", 1/(stop-start) )
             #one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
         with camera_two_lock:
             #last_results = parse_detections(picam2_1.capture_metadata())
             two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
             #two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
+
+       
 
 def obj_detection_process(event,mode):
 
@@ -156,7 +263,7 @@ def obj_detection_process(event,mode):
     camera1.picam2.pre_callback = camera1.draw_detections
     camera2.picam2.pre_callback = camera2.draw_detections
     while not event.is_set():
-        time.sleep(1/40)
+        time.sleep(1/30)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             meta_data = camera1.picam2.capture_metadata()
             camera1.last_results = camera1.parse_detections(meta_data)
@@ -164,11 +271,6 @@ def obj_detection_process(event,mode):
         with camera_two_lock:
             camera2.last_results = camera2.parse_detections(camera2.picam2.capture_metadata())
             two_image[:] =camera2.picam2.capture_array().astype(np.uint8)[:, :, :3]
-
-
-        
-        
-
 
         
 def update_imx500_shm(selected_model,event):
@@ -273,12 +375,18 @@ class CameraThread(QThread):
 
 class Adxl359Thread(QThread):
     # Define a signal to send data to the main thread
-    adxl359_plot_signal = pyqtSignal(np.ndarray)
+    adxl359_plot_signal = pyqtSignal(tuple)
 
     def __init__(self, parent=None):
         super().__init__(parent)  # Call the parent constructor
         # Initialize any other variables as needed
         self.previous_data = None
+  
+    def numpy_arrray_to_pixmap(self,numpy_array):
+        height, width, _ = numpy_array.shape
+        q_image = QImage(numpy_array.tobytes(), width, height, 3 * width, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(q_image)
+        return pixmap
 
     def run(self):
         # Update data from shared memory
@@ -286,17 +394,25 @@ class Adxl359Thread(QThread):
         global adxl359_data_lock
         global adxl359_shm
         global adxl359_data_shape
-
+        
         with adxl359_data_lock:
             existing_shm = shared_memory.SharedMemory(name=adxl359_shm.name)
             # Create a NumPy array from the shared memory buffer
-            data = np.ndarray(adxl359_data_shape, dtype=np.float16, buffer=existing_shm.buf)
+            data = np.ndarray(adxl359_data_shape, dtype=np.int8, buffer=existing_shm.buf)
             ret = copy.deepcopy(data)
 
         # Emit the signal only if the data has changed
         if self.previous_data is None or not np.array_equal(ret, self.previous_data):
-            self.previous_data = ret.copy()  # Update with the new data
-            self.adxl359_plot_signal.emit(ret)
+            self.previous_data = ret.copy()  # Update with the new dat
+
+
+
+            self.adxl359_plot_signal.emit((self.numpy_arrray_to_pixmap(ret[:,:,:,0]),\
+                                            self.numpy_arrray_to_pixmap(ret[:,:,:,1]),\
+                                            self.numpy_arrray_to_pixmap(ret[:,:,:,2]),\
+                                            self.numpy_arrray_to_pixmap(ret[:,:,:,3]),\
+                                            self.numpy_arrray_to_pixmap(ret[:,:,:,4]),\
+                                            self.numpy_arrray_to_pixmap(ret[:,:,:,5])))
 
 
 class MainWindow(QMainWindow):
@@ -409,20 +525,15 @@ class MainWindow(QMainWindow):
         # Create a vertical layout for the vibration plots (3 plots on the left)
         plot_layout = QVBoxLayout()
 
-        # Create the three vibration plots
-        self.plot1 = pg.PlotWidget(title="Vibration X Axis")
-        self.plot2 = pg.PlotWidget(title="Vibration Y Axis")
-        self.plot3 = pg.PlotWidget(title="Vibration Z Axis")
-
-        self.plot1_item = self.plot1.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='b')
-        self.plot2_item =self.plot2.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='g')
-        self.plot3_item =self.plot3.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='r')
+        self.vibx_graph = QLabel(self)
+        self.viby_graph = QLabel(self)
+        self.vibz_graph = QLabel(self)
 
         # Update the plot data
         # Add the plots to the vertical layout
-        plot_layout.addWidget(self.plot1)
-        plot_layout.addWidget(self.plot2)
-        plot_layout.addWidget(self.plot3)
+        plot_layout.addWidget(self.vibx_graph)
+        plot_layout.addWidget(self.viby_graph)
+        plot_layout.addWidget(self.vibz_graph)
 
         # Add the plot layout to the bottom row (left side)
         bottom_layout.addLayout(plot_layout)
@@ -430,46 +541,30 @@ class MainWindow(QMainWindow):
         # Create a vertical layout for the anomaly plots (far right)
         anomaly_plot_layout = QVBoxLayout()
 
-        # Create the three anomaly plots
-        self.anomaly_score_plot1 = pg.PlotWidget(title="Anomaly Plot 1")
-        self.anomaly_score_plot2 = pg.PlotWidget(title="Anomaly Plot 2")
-        self.anomaly_score_plot3 = pg.PlotWidget(title="Anomaly Plot 3")
-
-        self.vibx_anomaly_scores = np.zeros(20)
-        self.viby_anomaly_scores = np.zeros(20)
-        self.vibz_anomaly_scores = np.zeros(20)
-
-        self.anomaly_score_plot1_item = self.anomaly_score_plot1.plot(np.arange(20), self.vibx_anomaly_scores, pen='orange', name="Anomaly Score 1")
-        self.anomaly_score_plot2_item = self.anomaly_score_plot2.plot(np.arange(20), self.viby_anomaly_scores, pen='purple', name="Anomaly Score 2")
-        self.anomaly_score_plot3_item = self.anomaly_score_plot3.plot(np.arange(20), self.vibz_anomaly_scores, pen='pink', name="Anomaly Score 3")
+        self.vibx_anomaly_graph = QLabel(self)
+        self.viby_anomaly_graph = QLabel(self)
+        self.vibz_anomaly_graph = QLabel(self)
 
         # Add the anomaly plots to the vertical layout
-        anomaly_plot_layout.addWidget(self.anomaly_score_plot1)
-        anomaly_plot_layout.addWidget(self.anomaly_score_plot2)
-        anomaly_plot_layout.addWidget(self.anomaly_score_plot3)
+        anomaly_plot_layout.addWidget(self.vibx_anomaly_graph)
+        anomaly_plot_layout.addWidget(self.viby_anomaly_graph)
+        anomaly_plot_layout.addWidget(self.vibz_anomaly_graph)
 
         # Add the anomaly plot layout to the bottom row (right side)
         bottom_layout.addLayout(anomaly_plot_layout)
 
-        self.vibx = None
-        self.viby = None
-        self.vibz = None
-        self.temp = None
-
         # Add the bottom layout to the main layout
         main_layout.addLayout(bottom_layout)
-
-
         # Set the central widget layout
         central_widget.setLayout(main_layout)
   
 
   
 
-        # # Set up the QTimer to update the images every 2 seconds (2000ms)
+        #Set up the QTimer to update the images every 2 seconds (2000ms)
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.start_camera_thread)
-        self.camera_timer.start(int(1000/40))  # Update every 2000ms (2 seconds)
+        self.camera_timer.start(int(1000/25))  # Update every 2000ms (2 seconds)
 
         self.adxl359_timer= QTimer(self)
         self.adxl359_timer.timeout.connect(self.start_sensor_thread)
@@ -491,6 +586,13 @@ class MainWindow(QMainWindow):
         self.terminate_event = multiprocessing.Event()
         self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
         self.camera_processes.start()
+
+        self.start=0
+        self.stop=0
+        self.plot_tuple=None
+
+
+        
  
 
     def apply_model(self):
@@ -567,70 +669,23 @@ class MainWindow(QMainWindow):
         self.display_image(self.camera_feed_1, camera_one)
         self.display_image(self.camera_feed_2, camera_two)
 
-    def get_anomaly_scores(self,vibx,viby,vibz):
-        vibx_score= np.random.rand(1)[0]
-        viby_score= np.random.rand(1)[0]
-        vibz_score= np.random.rand(1)[0]
-        return vibx_score,viby_score,vibz_score
-    
-        
-    def update_anomaly_score_arrays(self,vibx_data,viby_data,vibz_data):
-        vibx_score,viby_score,vibz_score =self.get_anomaly_scores(vibx_data,viby_data,vibz_data)
-
-        
-        self.vibx_anomaly_scores = np.roll(self.vibx_anomaly_scores, 1)  # Shift elements to the right by 1
-        self.vibx_anomaly_scores[0] = vibx_score
-
-        self.viby_anomaly_scores = np.roll(self.viby_anomaly_scores, 1)  # Shift elements to the right by 1
-        self.viby_anomaly_scores[0] = vibx_score
-
-        self.vibz_anomaly_scores = np.roll(self.vibz_anomaly_scores, 1)  # Shift elements to the right by 1
-        self.vibz_anomaly_scores[0] = vibx_score
-
-    def update_adxl359_feed(self,array):
-        
-    
-        self.vibx = array[:, 0]
-        self.viby = array[:, 1]
-        self.vibz = array[:, 2]
-        self.temp = array[0, 3]
-
-        self.plot1_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibx)
-        self.plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),self.viby)
-        self.plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),self.vibz)
-        self.temperature_label.setText(f"Temperature: {self.temp:.2f} °C")
-
-
-        self.update_anomaly_score_arrays(array[:,0],array[:,1],array[:,2])
-
-        index = np.arange(20)
-        self.anomaly_score_plot1_item.setData(index, self.vibx_anomaly_scores)
-        self.anomaly_score_plot2_item.setData(index, self.viby_anomaly_scores)
-        self.anomaly_score_plot3_item.setData(index, self.vibz_anomaly_scores)
-        # # Define anomaly thresholds
-        # threshold = 0.8
-        # self.anomaly_score_plot1.scatterPlot(index[self.vibx_anomaly_scores > threshold], 
-        #                                 self.vibx_anomaly_scores[self.vibx_anomaly_scores >threshold], 
-        #                                 pen=None, symbol='o', symbolBrush='r', symbolSize=6)
-        # self.anomaly_score_plot2.scatterPlot(index[self.viby_anomaly_scores > threshold], 
-        #                                 self.viby_anomaly_scores[self.viby_anomaly_scores > threshold], 
-        #                                 pen=None, symbol='o', symbolBrush='r', symbolSize=6)
-        # self.anomaly_score_plot3.scatterPlot(index[self.vibz_anomaly_scores > threshold], 
-        #                                 self.vibz_anomaly_scores[self.vibz_anomaly_scores > threshold], 
-        #                                 pen=None, symbol='o', symbolBrush='r', symbolSize=6)
-        
-
-    # def display_image(self, label, image_data):
-    #     height, width, _ = image_data.shape
-    #     q_image = QImage(image_data.tobytes(), width, height, 3 * width, QImage.Format_RGB888)
-    #     pixmap = QPixmap.fromImage(q_image)
-    #     label.setPixmap(pixmap)
+    def update_adxl359_feed(self,plot_tuple):
+        self.plot_tuple= plot_tuple
+        vibx_graph, viby_graph,vibz_graph,vibx_anomaly_graph,viby_anomaly_graph,vibz_anomaly_graph = plot_tuple
+        self.display_image(self.vibx_graph, vibx_graph)
+        self.display_image(self.viby_graph, viby_graph)
+        self.display_image(self.vibz_graph, vibz_graph)
+        self.display_image(self.vibx_anomaly_graph, vibx_anomaly_graph)
+        self.display_image(self.viby_anomaly_graph, viby_anomaly_graph)
+        self.display_image(self.vibz_anomaly_graph, vibz_anomaly_graph)
 
     def display_image(self, label, image_pixmap):
-        # height, width, _ = image_data.shape
-        # q_image = QImage(image_data.tobytes(), width, height, 3 * width, QImage.Format_RGB888)
-        # pixmap = QPixmap.fromImage(q_image)
         label.setPixmap(image_pixmap)
+
+
+
+
+
 
 
 

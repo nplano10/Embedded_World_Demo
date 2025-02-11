@@ -83,7 +83,6 @@ def anomaly_process(event,bbox_queue, results_queue, args):
     while not event.is_set():
         time.sleep(1/40)
         with camera_two_lock:
-            #last_results = parse_detections(picam2_1.capture_metadata())
             two_image[:] =detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
 def detection_process(event,bbox_queue, results_queue, args):
@@ -155,14 +154,7 @@ def obj_detection_process(event,mode):
         camera2 = IMX500ObjectDetector(ob_det.sue_args(),0)   
     camera1.picam2.pre_callback = camera1.draw_detections
     camera2.picam2.pre_callback = camera2.draw_detections
-    print("Done loading model")
-    i=0
     while not event.is_set():
-        i=i+1
-        if(i==80):
-            i=0
-            print("in obj det")
-        
         time.sleep(1/40)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             meta_data = camera1.picam2.capture_metadata()
