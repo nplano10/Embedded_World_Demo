@@ -34,9 +34,8 @@ camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_sha
 camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_shape) * np.uint8().itemsize)
 
 
-
 adxl359_data_lock = lock = multiprocessing.Lock()
-adxl359_data_shape =(300,700,3,6)
+adxl359_data_shape =(320,850,3,6)
 adxl359_shm = shared_memory.SharedMemory(create=True,size=np.prod(adxl359_data_shape)* np.uint8().itemsize)
 
 
@@ -47,10 +46,6 @@ class Model(Enum):
     SONY = 3
     NOMODEL = 4
 
-
-
-
-
 def pixmap_to_numpy(pixmap):
     # Convert QPixmap to QImage
     image = pixmap.toImage()
@@ -58,15 +53,26 @@ def pixmap_to_numpy(pixmap):
     # Ensure the image is in a format compatible with raw data access
     image = image.convertToFormat(QImage.Format_RGB888)
     
-    # Extract raw pixel data
+    # Extract the width and height
     width = image.width()
     height = image.height()
+   # print(f"Width: {width}, Height: {height}")
     
-    # Create a NumPy array from the raw pixel data
+    # Extract the raw pixel data
     ptr = image.bits()
-    ptr.setsize(image.byteCount())
-    arr = np.array(ptr).reshape((height, width, 3))
-    return arr 
+    ptr.setsize(image.byteCount())  # Ensure the byte size is correct
+    
+    # Calculate bytes per row (includes padding)
+    bytes_per_line = image.bytesPerLine()
+    
+    # Create a raw numpy array from the pixel data (including padding)
+    arr = np.frombuffer(ptr, dtype=np.uint8).reshape((height, bytes_per_line))
+    
+    # Remove the padding from each row
+    # We only want width * 3 bytes per row (since the image is in RGB format)
+    arr = arr[:, :width * 3].reshape((height, width, 3))
+    
+    return arr
 
 
 def get_anomaly_scores(self,vibx,viby,vibz):
@@ -77,8 +83,6 @@ def get_anomaly_scores(self,vibx,viby,vibz):
     
 def update_anomaly_score_arrays(self,vibx_data,viby_data,vibz_data):
     vibx_score,viby_score,vibz_score =get_anomaly_scores(vibx_data,viby_data,vibz_data)
-
-    
     vibx_anomaly_scores = np.roll(vibx_anomaly_scores, 1)  # Shift elements to the right by 1
     vibx_anomaly_scores[0] = vibx_score
 
@@ -97,14 +101,14 @@ def update_adxl359_shm():
     plot2 = pg.PlotWidget(title="Vibration Y Axis")
     plot3 = pg.PlotWidget(title="Vibration Z Axis")
 
-    plot1.setFixedWidth(700)
-    plot1.setFixedHeight(300)
+    plot1.setFixedWidth(850)
+    plot1.setFixedHeight(320)
 
-    plot2.setFixedWidth(700)
-    plot2.setFixedHeight(300)
+    plot2.setFixedWidth(850)
+    plot2.setFixedHeight(320)
 
-    plot3.setFixedWidth(700)
-    plot3.setFixedHeight(300)
+    plot3.setFixedWidth(850)
+    plot3.setFixedHeight(320)
 
     plot1_item = plot1.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='b')
     plot2_item =plot2.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='g')
@@ -142,10 +146,7 @@ def update_adxl359_shm():
         plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),y_data)
         plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),z_data)
 
-        # pixmap_to_numpy(plot2.grab())
-        # pixmap_to_numpy(plot3.grab())
-
-        # temperature_label.setText(f"Temperature: {temp:.2f} °C")
+        #temperature_label.setText(f"Temperature: {temp:.2f} °C")
         # update_anomaly_score_arrays(x_data,y_data,z_data)
         # index = np.arange(20)
         # anomaly_score_plot1_item.setData(index, vibx_anomaly_scores)
@@ -214,31 +215,21 @@ def no_model_process(event):
     picam2_0.video_configuration.controls.FrameRate = 30.0
     picam2_0.video_configuration.size = (640, 480)
     picam2_0.start("video")
-
     picam2_1 = Picamera2(1)
     picam2_1.video_configuration.controls.FrameRate = 30.0
     picam2_1.video_configuration.size = (640, 480)
     picam2_1.start("video")
-    # Attach to the shared memory block
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
-    start=0
-    stop=0
+
     while not event.is_set():
-        # start = time.time()
         time.sleep(1/30)
-        with camera_one_lock:  # Ensure exclusive access to the shared memory
-            # start = time.time()
+        with camera_one_lock:  
             one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
-            # stop = time.time()
-            # print("update shared mem  freq ", 1/(stop-start) )
-            #one_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
         with camera_two_lock:
-            #last_results = parse_detections(picam2_1.capture_metadata())
             two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
-            #two_image[:] = np.random.randint(0, 255, camera_shape,dtype=np.uint8)
 
        
 
@@ -429,11 +420,12 @@ class MainWindow(QMainWindow):
         # Set up the window to match the screen size
         screen = QDesktopWidget().screenGeometry()
         screen_width = screen.width()
-        screen_height = screen.height()
+        screen_height = int(screen.height()*0.90)
         self.setGeometry(0, 0, screen_width, screen_height)
 
         # Set up the central widget and the main layout
         central_widget = QWidget(self)
+        central_widget.setStyleSheet("background-color: #2f2f2f;")
         self.setCentralWidget(central_widget)
 
         # Create the main layout (vertical)
@@ -445,6 +437,9 @@ class MainWindow(QMainWindow):
         # Camera feed 1 and its logging window
         camera_feed_1_layout = QHBoxLayout()
         self.camera_feed_1 = QLabel(self)
+        self.camera_feed_1.height= int(screen_height/3)
+        self.camera_feed_1.width= int(screen_width/4)
+        self.camera_feed_1.setFixedSize(self.camera_feed_1.width,self.camera_feed_1.height)
         self.camera_feed_1.setText("Camera Feed 1")  # Placeholder text
         self.camera_feed_1.setStyleSheet("background-color: lightgray;")
         camera_feed_1_layout.addWidget(self.camera_feed_1)
@@ -453,6 +448,9 @@ class MainWindow(QMainWindow):
         self.log_1 = QTextEdit(self)
         self.log_1.setPlaceholderText("Logging window for Camera Feed 1...")
         self.log_1.setReadOnly(True)
+        self.log_1.height= int(screen_height/3)
+        self.log_1.width = int(screen_width/8)
+        self.log_1.setFixedSize(self.log_1.width,self.log_1.height)
         self.log_1.setStyleSheet("background-color: black; color: white;")
         camera_feed_1_layout.addWidget(self.log_1)
         top_layout.addLayout(camera_feed_1_layout)
@@ -460,12 +458,18 @@ class MainWindow(QMainWindow):
         # Camera feed 2 and its logging window
         camera_feed_2_layout = QHBoxLayout()
         self.camera_feed_2 = QLabel(self)
+        self.camera_feed_2.height= int(screen_height/3)
+        self.camera_feed_2.width= int(screen_width/4)
+        self.camera_feed_2.setFixedSize(self.camera_feed_2.width,self.camera_feed_2.height)
         self.camera_feed_2.setText("Camera Feed 2")  # Placeholder text
         self.camera_feed_2.setStyleSheet("background-color: lightgray;")
         camera_feed_2_layout.addWidget(self.camera_feed_2)
 
         # Logging window for camera feed 2
         self.log_2 = QTextEdit(self)
+        self.log_2.height= int(screen_height/3)
+        self.log_2.width = int(screen_width/8)
+        self.log_2.setFixedSize(self.log_2.width,self.log_2.height)
         self.log_2.setPlaceholderText("Logging window for Camera Feed 2...")
         self.log_2.setReadOnly(True)
         self.log_2.setStyleSheet("background-color: black; color: white;")
@@ -479,12 +483,21 @@ class MainWindow(QMainWindow):
         bottom_layout = QHBoxLayout()
 
         # Create control buttons (Exit, Start, Stop)
+        height_buttons = int(screen_height*(1/16))
+        width_buttons = int(screen_width/16)
+        
         button_exit = QPushButton('Exit', self)
         button_exit.clicked.connect(self.exit_application)
+        button_exit.setFixedSize(width_buttons,height_buttons)
         
         button_start = QPushButton('Start', self)
+        button_start.setFixedSize(width_buttons,height_buttons)
+
         button_stop = QPushButton('Stop', self)
+        button_stop.setFixedSize(width_buttons,height_buttons)
+
         button_dispense = QPushButton('Dispense', self)
+        button_dispense.setFixedSize(width_buttons,height_buttons)
 
         # Create button layout and add buttons to it
         button_layout = QVBoxLayout()
@@ -496,10 +509,12 @@ class MainWindow(QMainWindow):
         # Create Apply Model button and dropdown
         apply_model_button = QPushButton('Apply Model', self)
         apply_model_button.clicked.connect(self.apply_model)  # Connect to a function for applying model
+        apply_model_button.setFixedSize(width_buttons,height_buttons)
         self.model = Model.NOMODEL
         
         # Create dropdown for model selection
         self.model_dropdown = QComboBox(self)
+        self.model_dropdown.setFixedSize(width_buttons,height_buttons)
 
         for model in Model:
             self.model_dropdown.addItem(model.name, model)
@@ -509,6 +524,8 @@ class MainWindow(QMainWindow):
         apply_model_layout = QHBoxLayout()
         apply_model_layout.addWidget(apply_model_button)
         apply_model_layout.addWidget(self.model_dropdown)
+        apply_model_layout.setSpacing(0)  # Set zero spacing between widgets
+        apply_model_layout.setContentsMargins(0, 0, 0, 0) 
 
         # Create temperature label
         self.temperature_label = QLabel(self)
@@ -526,8 +543,19 @@ class MainWindow(QMainWindow):
         plot_layout = QVBoxLayout()
 
         self.vibx_graph = QLabel(self)
+        self.vibx_graph.height= int(screen_height*(2/9))
+        self.vibx_graph.width= int(screen_width/3)
+        self.vibx_graph.setFixedSize(self.vibx_graph.width,self.vibx_graph.height)
+
         self.viby_graph = QLabel(self)
+        self.viby_graph.height= int(screen_height*(2/9))
+        self.viby_graph.width= int(screen_width/3)
+        self.viby_graph.setFixedSize(self.viby_graph.width,self.viby_graph.height)
+
         self.vibz_graph = QLabel(self)
+        self.vibz_graph.height= int(screen_height*(2/9))
+        self.vibz_graph.width= int(screen_width/3)
+        self.vibz_graph.setFixedSize(self.vibz_graph.width,self.vibz_graph.height)
 
         # Update the plot data
         # Add the plots to the vertical layout
@@ -542,8 +570,19 @@ class MainWindow(QMainWindow):
         anomaly_plot_layout = QVBoxLayout()
 
         self.vibx_anomaly_graph = QLabel(self)
+        self.vibx_anomaly_graph.height= int(screen_height*(2/9))
+        self.vibx_anomaly_graph.width= int(screen_width/3)
+        self.vibx_anomaly_graph.setFixedSize(self.vibx_anomaly_graph.width,self.vibx_anomaly_graph.height)
+
         self.viby_anomaly_graph = QLabel(self)
+        self.viby_anomaly_graph.height= int(screen_height*(2/9))
+        self.viby_anomaly_graph.width= int(screen_width/3)
+        self.viby_anomaly_graph.setFixedSize(self.viby_anomaly_graph.width,self.viby_anomaly_graph.height)
+
         self.vibz_anomaly_graph = QLabel(self)
+        self.vibz_anomaly_graph.height= int(screen_height*(2/9))
+        self.vibz_anomaly_graph.width= int(screen_width/3)
+        self.vibz_anomaly_graph.setFixedSize(self.vibz_anomaly_graph.width,self.vibz_anomaly_graph.height)
 
         # Add the anomaly plots to the vertical layout
         anomaly_plot_layout.addWidget(self.vibx_anomaly_graph)
@@ -558,6 +597,10 @@ class MainWindow(QMainWindow):
         # Set the central widget layout
         central_widget.setLayout(main_layout)
   
+
+
+
+
 
   
 
@@ -587,10 +630,6 @@ class MainWindow(QMainWindow):
         self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
         self.camera_processes.start()
 
-        self.start=0
-        self.stop=0
-        self.plot_tuple=None
-
 
         
  
@@ -599,10 +638,6 @@ class MainWindow(QMainWindow):
         """Handle the Apply Model button action."""
         selected_model = self.model_dropdown.currentData()
 
-        print(selected_model)
-
-        
-
         if self.model== selected_model:
             print("no change")
         else:
@@ -610,7 +645,6 @@ class MainWindow(QMainWindow):
             if self.camera_processes.is_alive():
                 self.terminate_event.set()
                 self.camera_processes.join()
-                print("child is done")
                 self.terminate_event = multiprocessing.Event()
                 self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
                 self.camera_processes.start()
@@ -670,7 +704,6 @@ class MainWindow(QMainWindow):
         self.display_image(self.camera_feed_2, camera_two)
 
     def update_adxl359_feed(self,plot_tuple):
-        self.plot_tuple= plot_tuple
         vibx_graph, viby_graph,vibz_graph,vibx_anomaly_graph,viby_anomaly_graph,vibz_anomaly_graph = plot_tuple
         self.display_image(self.vibx_graph, vibx_graph)
         self.display_image(self.viby_graph, viby_graph)
@@ -680,7 +713,7 @@ class MainWindow(QMainWindow):
         self.display_image(self.vibz_anomaly_graph, vibz_anomaly_graph)
 
     def display_image(self, label, image_pixmap):
-        label.setPixmap(image_pixmap)
+        label.setPixmap(image_pixmap.scaled(label.width,label.height))
 
 
 
