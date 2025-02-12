@@ -483,7 +483,7 @@ class MainWindow(QMainWindow):
         bottom_layout = QHBoxLayout()
 
         # Create control buttons (Exit, Start, Stop)
-        height_buttons = int(screen_height*(1/16))
+        height_buttons = int(screen_height*(1/32))
         width_buttons = int(screen_width/16)
         
         button_exit = QPushButton('Exit', self)
@@ -519,13 +519,13 @@ class MainWindow(QMainWindow):
         for model in Model:
             self.model_dropdown.addItem(model.name, model)
 
+
   
         # Create a horizontal layout for Apply Model button and dropdown
         apply_model_layout = QHBoxLayout()
         apply_model_layout.addWidget(apply_model_button)
         apply_model_layout.addWidget(self.model_dropdown)
-        apply_model_layout.setSpacing(0)  # Set zero spacing between widgets
-        apply_model_layout.setContentsMargins(0, 0, 0, 0) 
+
 
         # Create temperature label
         self.temperature_label = QLabel(self)
@@ -538,6 +538,7 @@ class MainWindow(QMainWindow):
 
         # Add the buttons, apply model controls, and temperature layout to the bottom-left of the layout
         bottom_layout.addLayout(button_layout)
+        bottom_layout.addStretch(1) 
 
         # Create a vertical layout for the vibration plots (3 plots on the left)
         plot_layout = QVBoxLayout()
@@ -565,6 +566,7 @@ class MainWindow(QMainWindow):
 
         # Add the plot layout to the bottom row (left side)
         bottom_layout.addLayout(plot_layout)
+        bottom_layout.addStretch(1) 
 
         # Create a vertical layout for the anomaly plots (far right)
         anomaly_plot_layout = QVBoxLayout()
@@ -591,6 +593,7 @@ class MainWindow(QMainWindow):
 
         # Add the anomaly plot layout to the bottom row (right side)
         bottom_layout.addLayout(anomaly_plot_layout)
+        bottom_layout.addStretch(1) 
 
         # Add the bottom layout to the main layout
         main_layout.addLayout(bottom_layout)
