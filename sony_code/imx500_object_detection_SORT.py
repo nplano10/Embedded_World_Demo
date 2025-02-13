@@ -24,7 +24,7 @@ from picamera2 import MappedArray, Picamera2
 from picamera2.devices import IMX500
 from picamera2.devices.imx500 import (NetworkIntrinsics,
                                     postprocess_nanodet_detection)
-
+import json
 @dataclass
 class Detection:
     category: int
@@ -163,6 +163,12 @@ class IMX500Detector:
         self.picam2.start(config)
         if self.intrinsics.preserve_aspect_ratio:
             self.imx500.set_auto_aspect_ratio()
+        self.set_camera_config("desk_lamp_settings.json")
+
+    def set_camera_config(self,json_file):
+            with open(json_file, 'r') as file:
+                config = json.load(file)
+            self.picam2.set_controls(config["controls"])
 
     @lru_cache
     def get_labels(self) -> List[str]:

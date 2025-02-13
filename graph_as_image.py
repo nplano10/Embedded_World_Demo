@@ -292,7 +292,7 @@ def update_imx500_shm(selected_model,event):
         model="sony_code/Models/anomaly-imx500/network.rpk",
         camera_index=1,
         fps=20,
-        image_threshold=0.45,
+        image_threshold=0.50,
         pixel_threshold=0.30,
         constant_offset_in_pixel=CAMERA_DISTANCE_PIXELS,
         roi_box_size=128,

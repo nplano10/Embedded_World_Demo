@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 from dataclasses import dataclass
 from picamera2 import CompletedRequest, MappedArray, Picamera2
 from picamera2.devices import IMX500
-
+import json
 @dataclass
 class AnomalyResult:
     bbox_id: int
@@ -66,6 +66,12 @@ class IMX500AnomalyDetector:
             buffer_count=12
         )
         self.picam2.start()
+        self.set_camera_config("desk_lamp_settings.json")
+
+    def set_camera_config(self,json_file):
+            with open(json_file, 'r') as file:
+                config = json.load(file)
+            self.picam2.set_controls(config["controls"])
 
     def scale_bbox_to_detection(self, detection_bbox: Tuple[int, int, int, int, float, int],
                               scale_x: float, scale_y: float) -> Tuple[int, int, int, int]:
