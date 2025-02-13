@@ -26,6 +26,11 @@ from enum import Enum
 import json
 
 
+from x_shared_mem_adxl import update_adxl359_vib_data_shm
+#from x_camera_thread_gui import CameraThread
+from x_adxl_thread_gui import Adxl359Thread
+
+
 camera_one_lock = multiprocessing.Lock()
 camera_two_lock = multiprocessing.Lock()
 width,height, channels = 480, 640, 3
@@ -33,10 +38,6 @@ camera_shape = (width,height, channels)
 camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_shape) * np.uint8().itemsize)
 camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_shape) * np.uint8().itemsize)
 
-adxl359_lock = lock = multiprocessing.Lock()
-adxl359_vib_data_shape =(320,850,3,6)
-adxl359_vib_data_shm = shared_memory.SharedMemory(create=True,size=np.prod(adxl359_vib_data_shape)* np.uint8().itemsize)
-adxl359_temp_shm = shared_memory.SharedMemory(create=True,size=np.float16().itemsize)
 
 
 
@@ -45,113 +46,6 @@ class Model(Enum):
     SMARTIE = 2
     SONY = 3
     NOMODEL = 4
-
-def pixmap_to_numpy(pixmap):
-    # Convert QPixmap to QImage
-    image = pixmap.toImage()
-    
-    # Ensure the image is in a format compatible with raw data access
-    image = image.convertToFormat(QImage.Format_RGB888)
-    
-    # Extract the width and height
-    width = image.width()
-    height = image.height()
-   # print(f"Width: {width}, Height: {height}")
-    
-    # Extract the raw pixel data
-    ptr = image.bits()
-    ptr.setsize(image.byteCount())  # Ensure the byte size is correct
-    
-    # Calculate bytes per row (includes padding)
-    bytes_per_line = image.bytesPerLine()
-    
-    # Create a raw numpy array from the pixel data (including padding)
-    arr = np.frombuffer(ptr, dtype=np.uint8).reshape((height, bytes_per_line))
-    
-    # Remove the padding from each row
-    # We only want width * 3 bytes per row (since the image is in RGB format)
-    arr = arr[:, :width * 3].reshape((height, width, 3))
-    
-    return arr
-
-
-def get_anomaly_scores(self,vibx,viby,vibz):
-        vibx_score= np.random.rand(1)[0]
-        viby_score= np.random.rand(1)[0]
-        vibz_score= np.random.rand(1)[0]
-        return vibx_score,viby_score,vibz_score
-    
-def update_anomaly_score_arrays(self,vibx_data,viby_data,vibz_data):
-    vibx_score,viby_score,vibz_score =get_anomaly_scores(vibx_data,viby_data,vibz_data)
-    vibx_anomaly_scores = np.roll(vibx_anomaly_scores, 1)  # Shift elements to the right by 1
-    vibx_anomaly_scores[0] = vibx_score
-
-    viby_anomaly_scores = np.roll(viby_anomaly_scores, 1)  # Shift elements to the right by 1
-    viby_anomaly_scores[0] = viby_score
-
-    vibz_anomaly_scores = np.roll(vibz_anomaly_scores, 1)  # Shift elements to the right by 1
-    vibz_anomaly_scores[0] = vibz_score
-
-def update_adxl359_vib_data_shm():
-
-    adxl359 = ADXL359()  # Adjust according to your actual initialization code
-    adxl359._initialize()
-
-    plot1 = pg.PlotWidget(title="Vibration X Axis")
-    plot2 = pg.PlotWidget(title="Vibration Y Axis")
-    plot3 = pg.PlotWidget(title="Vibration Z Axis")
-    plot1.setFixedWidth(850)
-    plot1.setFixedHeight(320)
-    plot2.setFixedWidth(850)
-    plot2.setFixedHeight(320)
-    plot3.setFixedWidth(850)
-    plot3.setFixedHeight(320)
-
-    plot1_item = plot1.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='b')
-    plot2_item =plot2.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='g')
-    plot3_item =plot3.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='r')
-
-
-    # Create the three anomaly plots
-    anomaly_score_plot1 = pg.PlotWidget(title="Anomaly Plot 1")
-
-    vibx_anomaly_scores = np.zeros(20)
-
-
-    anomaly_score_plot1_item = anomaly_score_plot1.plot(np.arange(20), vibx_anomaly_scores, pen='orange', name="Anomaly Score 1")
-
-
-    global adxl359_lock
-    global adxl359_vib_data_shm
-    global adxl359_vib_data_shape
-    global adxl359_temp_shm
-    # existing_shm = shared_memory.SharedMemory(name=adxl359_vib_data_shm.name)
-    # shm_array = np.ndarray((1,), dtype=np.float16, buffer=adxl359_temp_shm.buf)
-
-    # Create a NumPy array from the shared memory buffer
-    shared_adxl359_vib_data = np.ndarray(adxl359_vib_data_shape, dtype=np.int8, buffer=adxl359_vib_data_shm.buf)
-    shared_adxl359_temp_data = np.ndarray((1,), dtype=np.float16, buffer=adxl359_temp_shm.buf)
-    while True:
-        x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object
-        time.sleep(1)
-        plot1_item.setData(np.linspace(0, 1000, 1000).tolist(),x_data)
-        plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),y_data)
-        plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),z_data)
-
-        #temperature_label.setText(f"Temperature: {temp:.2f} °C")
-        # update_anomaly_score_arrays(x_data,y_data,z_data)
-        # index = np.arange(20)
-        # anomaly_score_plot1_item.setData(index, vibx_anomaly_scores)
-        # anomaly_score_plot2_item.setData(index, viby_anomaly_scores)
-        # anomaly_score_plot3_item.setData(index, vibz_anomaly_scores)   
-
-        with adxl359_lock:                                        
-            shared_adxl359_vib_data[:, :, :, 0] =pixmap_to_numpy(plot1.grab())
-            shared_adxl359_vib_data[:, :, :, 1] =pixmap_to_numpy(plot2.grab()) 
-            shared_adxl359_vib_data[:, :, :, 2] =pixmap_to_numpy(plot3.grab())
-            shared_adxl359_temp_data[0] = temp_data[0]
-
-
 
 
 
@@ -310,7 +204,6 @@ def update_imx500_shm(selected_model,event):
     if selected_model == Model.SMARTIE:
         obj_detection_process(event,1)
 
-    
 
 class CameraThread(QThread):
     # Define a signal to send data to the main thread
@@ -356,45 +249,6 @@ class CameraThread(QThread):
             self.previous_camera_two = camera_two.copy()
             # Emit the signal with the new data 
             self.camera_feed_signal.emit((self.numpy_arrray_to_pixmap(camera_one), self.numpy_arrray_to_pixmap(camera_two)))
-
-class Adxl359Thread(QThread):
-    # Define a signal to send data to the main thread
-    adxl359_plot_signal = pyqtSignal(tuple)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)  # Call the parent constructor
-        # Initialize any other variables as needed
-        self.previous_data = None
-  
-    def numpy_arrray_to_pixmap(self,numpy_array):
-        height, width, _ = numpy_array.shape
-        q_image = QImage(numpy_array.tobytes(), width, height, 3 * width, QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(q_image)
-        return pixmap
-
-    def run(self):
-        # Update data from shared memory
- 
-        global adxl359_lock
-        global adxl359_vib_data_shm
-        global adxl359_vib_data_shape
-        global adxl359_temp_shm
-        
-        with adxl359_lock:
-            # Create a NumPy array from the shared memory buffer
-            shared_adxl359_vib_data = np.ndarray(adxl359_vib_data_shape, dtype=np.int8, buffer=adxl359_vib_data_shm.buf)
-            shared_adxl359_temp_data = np.ndarray((1,), dtype=np.float16, buffer=adxl359_temp_shm.buf)
-            adxl359_vib_data= copy.deepcopy(shared_adxl359_vib_data)
-            temp_data = copy.deepcopy(shared_adxl359_temp_data)
-
-        # Emit the signal only if the data has changed
-        if self.previous_data is None or not np.array_equal(adxl359_vib_data, self.previous_data):
-            self.previous_data = adxl359_vib_data.copy()  # Update with the new dat
-
-            self.adxl359_plot_signal.emit((self.numpy_arrray_to_pixmap(adxl359_vib_data[:,:,:,0]),\
-                                            self.numpy_arrray_to_pixmap(adxl359_vib_data[:,:,:,1]),\
-                                            self.numpy_arrray_to_pixmap(adxl359_vib_data[:,:,:,2]),\
-                                                temp_data))
 
 
 class MainWindow(QMainWindow):
@@ -590,6 +444,11 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(bottom_layout)
         # Set the central widget layout
         central_widget.setLayout(main_layout)
+
+
+
+
+        
   
 
 
@@ -607,8 +466,18 @@ class MainWindow(QMainWindow):
         self.adxl359_timer.timeout.connect(self.start_sensor_thread)
         self.adxl359_timer.start(int(1000))  # Update every 2000ms (2 seconds)
 
+
+
+
+
+        self.adxl359_lock = lock = multiprocessing.Lock()
+        self.adxl359_vib_data_shape =(320,850,3,6)
+        self.adxl359_vib_data_shm = shared_memory.SharedMemory(create=True,size=np.prod(self.adxl359_vib_data_shape)* np.uint8().itemsize)
+        self.adxl359_temp_shm = shared_memory.SharedMemory(create=True,size=np.float16().itemsize)
+
+
         self.camera_thread = CameraThread(self)
-        self.adxl359_thread = Adxl359Thread(self)
+        self.adxl359_thread = Adxl359Thread(self,self.adxl359_vib_data_shm.name,self.adxl359_temp_shm.name, self.adxl359_vib_data_shape,self.adxl359_lock)
         
 
         # # Connect the thread signals to slots in the main window
@@ -616,9 +485,7 @@ class MainWindow(QMainWindow):
         self.adxl359_thread.adxl359_plot_signal.connect(self.update_adxl359_feed)
 
 
-
-        
-        self.sensor_processes = multiprocessing.Process(target=update_adxl359_vib_data_shm)
+        self.sensor_processes = multiprocessing.Process(target=update_adxl359_vib_data_shm,args=(self.adxl359_vib_data_shm.name,self.adxl359_temp_shm.name, self.adxl359_vib_data_shape,self.adxl359_lock))
         self.sensor_processes.start()
         self.terminate_event = multiprocessing.Event()
         self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
@@ -671,14 +538,14 @@ class MainWindow(QMainWindow):
         print("Cleaning mem")
         camera_one_shm.close()  # Detach from the shared memory
         camera_one_shm.unlink()  # Deallocate the shared memory
-        adxl359_temp_shm.close()
-        adxl359_temp_shm.unlink()
+        self.adxl359_temp_shm.close()
+        self.adxl359_temp_shm.unlink()
 
         camera_two_shm.close()  # Detach from the shared memory
         camera_two_shm.unlink()  # Deallocate the shared memory
 
-        adxl359_vib_data_shm.close()  # Detach from the shared memory
-        adxl359_vib_data_shm.unlink()  # Deallocate the shared memory
+        self.adxl359_vib_data_shm.close()  # Detach from the shared memory
+        self.adxl359_vib_data_shm.unlink()  # Deallocate the shared memory
         print("Done Cleaning mem")
         
 
