@@ -1,0 +1,12 @@
+// version 1.0.0 
+
+namespace NeuralaRecognizer;
+
+table HifiResults {
+    width:uint;
+    height:uint;
+    anomalyScore:float;
+    heatmap:[float];
+}
+
+root_type HifiResults;

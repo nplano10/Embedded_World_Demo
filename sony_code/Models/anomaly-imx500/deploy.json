@@ -1,0 +1,47 @@
+{
+     "metadata_version": "1.2",
+     "date": "2025-02-11T14:30:51-0800",
+     "id": "cfac8b0e-2357-40c4-899b-4bb04d4e1833",
+     "type": "segmentation",
+     "inputs": [
+          {
+               "layer_name": "data",
+               "alias": "data",
+               "width": 256,
+               "height": 256,
+               "channels": 3,
+               "type": "binary32",
+               "data_range": "normalizedAroundZero",
+               "color_space": "RGB",
+               "layout": "planar",
+               "dynamic": false
+          }
+     ],
+     "outputs": [
+          {
+               "layer_name": "anomaly_score_concat_head",
+               "alias": "anomaly_map",
+               "width": 64,
+               "height": 64,
+               "channels": 2,
+               "type": "binary32",
+               "layout": "planar"
+          }
+     ],
+     "net": {
+          "model": "unknown",
+          "resize_algorithms": [
+               "nearestNeighbor"
+          ],
+          "files": {
+               "labels": {
+                    "path": "labels.txt",
+                    "sha256": "ac423e1d7cf4e055147395e6d5f71b38361102c8ba4f1055edd0c3fbe1349eeb"
+               },
+               "architecture": {
+                    "path": "142d1146-69ec-4b68-b20a-e8c4375d517e-static.onnx",
+                    "sha256": "dad6603f67cc696ea5c4c45fb4161b43f3d728e50c5ec59fd3bf1dd70c299974"
+               }
+          }
+     }
+}

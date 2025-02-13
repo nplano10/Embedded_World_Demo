@@ -1,0 +1,72 @@
+{
+    "metadata_version": "1.2",
+    "id": "dc907b70e7b94a4e8dae2615b2b6c4ff-nanodet-plus-m-1.5x-320",
+    "date": "2025-02-11T19:13:05.270181+00:00",
+    "type": "detection",
+    "net": {
+        "model": "nanodet",
+        "resize_algorithms": [
+            "bilinear"
+        ],
+        "files": {
+            "architecture": {
+                "path": "dc907b70e7b94a4e8dae2615b2b6c4ff-nanodet-plus-m-1.5x-320.keras",
+                "sha256": "a1b9767df23f53143a01fcb99558bb2f0ffd491515b901e1fbe363392c0d53a1"
+            },
+            "labels": {
+                "path": "dc907b70e7b94a4e8dae2615b2b6c4ff-nanodet-plus-m-1.5x-320.txt",
+                "sha256": "c4aeeb30b5989114006059bf083850d3bf4901687333c0c1f32695e4c4235e34"
+            }
+        }
+    },
+    "inputs": [
+        {
+            "layer_name": "input_1",
+            "alias": "data",
+            "channels": 3,
+            "width": 320,
+            "height": 320,
+            "type": "binary32",
+            "data_range": "normalizedAroundZero",
+            "color_space": "RGB",
+            "layout": "planar",
+            "dynamic": true,
+            "padding": false,
+            "resize_algorithm": "longmax"
+        }
+    ],
+    "outputs": [
+        {
+            "layer_name": "tf.image.combined_non_max_suppression/combined_non_max_suppression/CombinedNonMaxSuppression:0",
+            "alias": "detection_boxes",
+            "width": 1,
+            "height": 4,
+            "channels": 300,
+            "type": "binary32"
+        },
+        {
+            "layer_name": "tf.image.combined_non_max_suppression/combined_non_max_suppression/CombinedNonMaxSuppression:2",
+            "alias": "detection_classes",
+            "width": 1,
+            "height": 1,
+            "channels": 300,
+            "type": "binary32"
+        },
+        {
+            "layer_name": "tf.image.combined_non_max_suppression/combined_non_max_suppression/CombinedNonMaxSuppression:1",
+            "alias": "detection_scores",
+            "width": 1,
+            "height": 1,
+            "channels": 300,
+            "type": "binary32"
+        },
+        {
+            "layer_name": "tf.image.combined_non_max_suppression/combined_non_max_suppression/CombinedNonMaxSuppression:3",
+            "alias": "num_boxes",
+            "width": 1,
+            "height": 1,
+            "channels": 1,
+            "type": "binary32"
+        }
+    ]
+}

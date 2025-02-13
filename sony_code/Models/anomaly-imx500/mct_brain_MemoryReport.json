@@ -1,0 +1,22 @@
+{
+  "Memory Report": {
+    "Name": "mct_brain",
+    "Runtime Memory Physical Size": "3.44MB",
+    "Model Memory Physical Size": "2.71MB",
+    "Reserved Memory": "1.00KB",
+    "Memory Usage": "6.16MB",
+    "Total Memory Available On Chip": "8.00MB",
+    "Memory Utilization": "77%",
+    "Fit In Chip": true,
+    "Input Persistent": true,
+    "Networks": [
+      {
+        "Hash": "mct_brain",
+        "Name": "mct_brain",
+        "Runtime Memory Physical Size": "3.44MB",
+        "Model Memory Physical Size": "2.71MB",
+        "Input Persistence Cost": "196.00KB"
+      }
+    ]
+  }
+}
