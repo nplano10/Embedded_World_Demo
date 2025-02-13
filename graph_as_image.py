@@ -267,7 +267,7 @@ def obj_detection_process(event,mode):
 def update_imx500_shm(selected_model,event):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
-    CAMERA_DISTANCE_PIXELS = 210  # Distance in pixels
+    CAMERA_DISTANCE_PIXELS = -122  # Distance in pixels
     PIXELS_PER_MM = CAMERA_DISTANCE_PIXELS / CAMERA_DISTANCE_MM
     DETECTION_REGION = [20, 70, 600, 410]
 
@@ -275,8 +275,8 @@ def update_imx500_shm(selected_model,event):
     results_queue = Queue()  # Queue for receiving classification results
 
     pill_detection_args = argparse.Namespace(
-        model="sony_code/Models/Detection/network.rpk", 
-        labels="sony_code/Models/Detection/labels.txt",
+        model="sony_code/Models/detection-imx500/network.rpk", 
+        labels="sony_code/Models/detection-imx500/labels.txt",
         camera_index=0,
         fps=20,
         max_disappeared=20,
@@ -287,7 +287,7 @@ def update_imx500_shm(selected_model,event):
         detection_region=DETECTION_REGION
     )
     anomaly_detection_args = argparse.Namespace(
-        model="sony_code/Models/Anomaly/network.rpk",
+        model="sony_code/Models/anomaly-imx500/network.rpk",
         camera_index=1,
         fps=20,
         image_threshold=0.45,
@@ -614,7 +614,7 @@ class MainWindow(QMainWindow):
 
         self.adxl359_timer= QTimer(self)
         self.adxl359_timer.timeout.connect(self.start_sensor_thread)
-        self.adxl359_timer.start(int(1000))  # Update every 2000ms (2 seconds)
+        self.adxl359_timer.start(int(10000))  # Update every 2000ms (2 seconds)
 
         self.camera_thread = CameraThread(self)
         self.adxl359_thread = Adxl359Thread(self)
