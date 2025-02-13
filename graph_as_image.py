@@ -177,7 +177,7 @@ def anomaly_process(event,bbox_queue, results_queue, args):
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
 
     while not event.is_set():
-        time.sleep(1/40)
+        time.sleep(1/30)
         with camera_two_lock:
             two_image[:] =detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
@@ -193,17 +193,19 @@ def detection_process(event,bbox_queue, results_queue, args):
     one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     while not event.is_set():
-        time.sleep(1/40)
-        metadata = detector.picam2.capture_metadata()
-        detector.last_results = detector.parse_detections(
-            metadata,
-            args.iou,
-            args.max_detections,
-            args.threshold
-        )
-        detector.update_bbox_queue(bbox_queue)
+        time.sleep(1/30)
         with camera_one_lock:  # Ensure exclusive access to the shared memory
+            metadata = detector.picam2.capture_metadata()
+            detector.last_results = detector.parse_detections(
+                metadata,
+                args.iou,
+                args.max_detections,
+                args.threshold
+            )
+            
+            detector.update_bbox_queue(bbox_queue)
             one_image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
+
 
 def no_model_process(event):
     global camera_one_lock

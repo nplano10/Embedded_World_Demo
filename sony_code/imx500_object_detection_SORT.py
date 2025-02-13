@@ -160,7 +160,7 @@ class IMX500Detector:
             controls={"FrameRate": self.intrinsics.inference_rate},
             buffer_count=12
         )
-        self.picam2.start()
+        self.picam2.start(config)
         if self.intrinsics.preserve_aspect_ratio:
             self.imx500.set_auto_aspect_ratio()
 
