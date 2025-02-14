@@ -1,0 +1,27 @@
+device 10/6
+
+cd /home/szheng5/embeddedworld/data_collection/Embedded_World_Demo/SER_DES_Setup
+python setup_6.py
+python  set_ser_add_6.py
+sudo i2cdetect -y 6
+
+
+device 10/6
+
+cd /home/szheng5/embeddedworld/data_collection/Embedded_World_Demo/SER_DES_Setup
+python setup_4.py
+python  set_ser_add_4.py
+sudo i2cdetect -y 4
+
+
+
+ls /dev/i2c-*
+
+
+runnig 
+
+cd /home/szheng5/embeddedworld/data_collection/Embedded_World_Demo
+
+source /env/bin/activate
+
+python x_demo.py

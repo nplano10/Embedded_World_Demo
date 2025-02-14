@@ -29,10 +29,15 @@ class CameraThread(QThread):
     # Define a signal to send data to the main thread
     camera_feed_signal = pyqtSignal(tuple)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent, camera_one_shm_name,camera_two_shm_name,camera_shape,camera_one_lock,camera_two_lock):
         super().__init__(parent)  # Make sure to call the base class's constructor
         self.previous_camera_one = None
         self.previous_camera_two = None
+        self.camera_one_shm_name =camera_one_shm_name
+        self.camera_two_shm_name =camera_two_shm_name
+        self.camera_shape = camera_shape
+        self.camera_one_lock = camera_one_lock
+        self.camera_two_lock = camera_two_lock
 
     
     def numpy_arrray_to_pixmap(self,numpy_array):
@@ -43,22 +48,17 @@ class CameraThread(QThread):
 
 
     def run(self):
-        global camera_one_lock
-        global camera_one_shm
-        global camera_two_lock
-        global camera_two_shm
-        global camera_shape 
 
         # Attach to the shared memory for camera one
-        with camera_one_lock:
-            one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
-            one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
+        with self.camera_one_lock:
+            one_shm = shared_memory.SharedMemory(name=self.camera_one_shm_name)
+            one_image = np.ndarray(self.camera_shape, dtype=np.uint8, buffer=one_shm.buf)
             camera_one = copy.deepcopy(one_image)
 
         # Attach to the shared memory for camera two
-        with camera_two_lock:
-            two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
-            two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
+        with self.camera_two_lock:
+            two_shm = shared_memory.SharedMemory(name=self.camera_two_shm_name)
+            two_image = np.ndarray(self.camera_shape, dtype=np.uint8, buffer=two_shm.buf)
             camera_two = copy.deepcopy(two_image)
 
         # Check if either camera has new data

@@ -27,228 +27,13 @@ import json
 
 
 from x_shared_mem_adxl import update_adxl359_vib_data_shm
-#from x_camera_thread_gui import CameraThread
+from x_shared_mem_camera import Model, update_imx500_shm
+from x_camera_thread_gui import CameraThread
 from x_adxl_thread_gui import Adxl359Thread
 
 
-camera_one_lock = multiprocessing.Lock()
-camera_two_lock = multiprocessing.Lock()
-width,height, channels = 480, 640, 3
-camera_shape = (width,height, channels)
-camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_shape) * np.uint8().itemsize)
-camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(camera_shape) * np.uint8().itemsize)
 
 
-
-
-class Model(Enum):
-    OBJECT = 1
-    SMARTIE = 2
-    SONY = 3
-    NOMODEL = 4
-
-
-
-def anomaly_process(event,bbox_queue, results_queue, args):
-
-    global camera_two_lock
-    global camera_two_shm
-    global camera_shape 
-    detector = IMX500AnomalyDetector(args)
-    detector.picam2.pre_callback = lambda req: detector.process_frame(
-        req, bbox_queue, results_queue)
-    print("Done loading model")
-    two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
-    two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
-
-    while not event.is_set():
-        time.sleep(1/30)
-        with camera_two_lock:
-            two_image[:] =detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
-
-def detection_process(event,bbox_queue, results_queue, args):
-    global camera_one_lock
-    global camera_one_shm
-    global camera_shape 
-
-    detector = IMX500Detector(args)
-    detector.picam2.pre_callback = lambda req: detector.draw_detections(req, results_queue)
-    print("Done loading model")
-
-    one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
-    one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
-    while not event.is_set():
-        time.sleep(1/30)
-        with camera_one_lock:  # Ensure exclusive access to the shared memory
-            metadata = detector.picam2.capture_metadata()
-            detector.last_results = detector.parse_detections(
-                metadata,
-                args.iou,
-                args.max_detections,
-                args.threshold
-            )
-            
-            detector.update_bbox_queue(bbox_queue)
-            one_image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
-
-
-def no_model_process(event):
-    global camera_one_lock
-    global camera_one_shm
-    global camera_two_lock
-    global camera_two_shm
-    global camera_shape 
-    picam2_0 = Picamera2(0)
-    picam2_0.video_configuration.controls.FrameRate = 30.0
-    picam2_0.video_configuration.size = (640, 480)
-    picam2_0.start("video")
-    picam2_1 = Picamera2(1)
-    picam2_1.video_configuration.controls.FrameRate = 30.0
-    picam2_1.video_configuration.size = (640, 480)
-    picam2_1.start("video")
-    one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
-    one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
-    two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
-    two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
-
-    while not event.is_set():
-        time.sleep(1/30)
-        with camera_one_lock:  
-            one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
-        with camera_two_lock:
-            two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
-
-       
-
-def obj_detection_process(event,mode):
-
-    global camera_one_lock
-    global camera_one_shm
-    global camera_two_lock
-    global camera_two_shm
-    global camera_shape 
-
-    one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=shared_memory.SharedMemory(name=camera_one_shm.name).buf)
-    two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=shared_memory.SharedMemory(name=camera_two_shm.name).buf)
-    
-
-    if(mode == 0):
-        camera1 = IMX500ObjectDetector(ob_det.sony_args(),1)
-        camera2 = IMX500ObjectDetector(ob_det.sony_args(),0)   
-    if(mode ==1 ):
-        camera1 = IMX500ObjectDetector(ob_det.sue_args(),1)
-        camera2 = IMX500ObjectDetector(ob_det.sue_args(),0)   
-    camera1.picam2.pre_callback = camera1.draw_detections
-    camera2.picam2.pre_callback = camera2.draw_detections
-    while not event.is_set():
-        time.sleep(1/30)
-        with camera_one_lock:  # Ensure exclusive access to the shared memory
-            meta_data = camera1.picam2.capture_metadata()
-            camera1.last_results = camera1.parse_detections(meta_data)
-            one_image[:] = camera1.picam2.capture_array().astype(np.uint8)[:, :, :3]
-        with camera_two_lock:
-            camera2.last_results = camera2.parse_detections(camera2.picam2.capture_metadata())
-            two_image[:] =camera2.picam2.capture_array().astype(np.uint8)[:, :, :3]
-
-        
-def update_imx500_shm(selected_model,event):
-
-    CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
-    CAMERA_DISTANCE_PIXELS = -122  # Distance in pixels
-    PIXELS_PER_MM = CAMERA_DISTANCE_PIXELS / CAMERA_DISTANCE_MM
-    DETECTION_REGION = [20, 70, 600, 410]
-
-    bbox_queue = Queue(maxsize=50)  # Queue for passing bounding boxes
-    results_queue = Queue()  # Queue for receiving classification results
-
-    pill_detection_args = argparse.Namespace(
-        model="sony_code/Models/detection-imx500/network.rpk", 
-        labels="sony_code/Models/detection-imx500/labels.txt",
-        camera_index=0,
-        fps=20,
-        max_disappeared=20,
-        iou=0.65,
-        threshold=0.5,
-        max_detections=10,
-        pixels_per_mm=PIXELS_PER_MM,
-        detection_region=DETECTION_REGION
-    )
-    anomaly_detection_args = argparse.Namespace(
-        model="sony_code/Models/anomaly-imx500/network.rpk",
-        camera_index=1,
-        fps=20,
-        image_threshold=0.50,
-        pixel_threshold=0.30,
-        constant_offset_in_pixel=CAMERA_DISTANCE_PIXELS,
-        roi_box_size=128,
-        pixels_per_mm=PIXELS_PER_MM
-    )
-
-
-    pill_detection_proc = Process(target=detection_process, args=(event,bbox_queue, results_queue, pill_detection_args))
-    anomaly_detection_proc = Process(target=anomaly_process, args=(event,bbox_queue, results_queue, anomaly_detection_args))
-
-    if selected_model == Model.SONY:
-        pill_detection_proc.start()
-        anomaly_detection_proc.start()
-        pill_detection_proc.join()
-        anomaly_detection_proc.join()
-    
-    if selected_model == Model.NOMODEL:
-       no_model_process(event)
-
-    if selected_model == Model.OBJECT:
-        
-        obj_detection_process(event,0)
-
-    if selected_model == Model.SMARTIE:
-        obj_detection_process(event,1)
-
-
-class CameraThread(QThread):
-    # Define a signal to send data to the main thread
-    camera_feed_signal = pyqtSignal(tuple)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)  # Make sure to call the base class's constructor
-        self.previous_camera_one = None
-        self.previous_camera_two = None
-
-    
-    def numpy_arrray_to_pixmap(self,numpy_array):
-        height, width, _ = numpy_array.shape
-        q_image = QImage(numpy_array.tobytes(), width, height, 3 * width, QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(q_image)
-        return pixmap
-
-
-    def run(self):
-        global camera_one_lock
-        global camera_one_shm
-        global camera_two_lock
-        global camera_two_shm
-        global camera_shape 
-
-        # Attach to the shared memory for camera one
-        with camera_one_lock:
-            one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
-            one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
-            camera_one = copy.deepcopy(one_image)
-
-        # Attach to the shared memory for camera two
-        with camera_two_lock:
-            two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
-            two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
-            camera_two = copy.deepcopy(two_image)
-
-        # Check if either camera has new data
-        if (self.previous_camera_one is None or not np.array_equal(camera_one, self.previous_camera_one)) or \
-           (self.previous_camera_two is None or not np.array_equal(camera_two, self.previous_camera_two)):
-            # Update previous images with current ones
-            self.previous_camera_one = camera_one.copy()
-            self.previous_camera_two = camera_two.copy()
-            # Emit the signal with the new data 
-            self.camera_feed_signal.emit((self.numpy_arrray_to_pixmap(camera_one), self.numpy_arrray_to_pixmap(camera_two)))
 
 
 class MainWindow(QMainWindow):
@@ -470,25 +255,36 @@ class MainWindow(QMainWindow):
 
 
 
-        self.adxl359_lock = lock = multiprocessing.Lock()
+        self.adxl359_lock  = multiprocessing.Lock()
         self.adxl359_vib_data_shape =(320,850,3,6)
         self.adxl359_vib_data_shm = shared_memory.SharedMemory(create=True,size=np.prod(self.adxl359_vib_data_shape)* np.uint8().itemsize)
         self.adxl359_temp_shm = shared_memory.SharedMemory(create=True,size=np.float16().itemsize)
 
-
-        self.camera_thread = CameraThread(self)
         self.adxl359_thread = Adxl359Thread(self,self.adxl359_vib_data_shm.name,self.adxl359_temp_shm.name, self.adxl359_vib_data_shape,self.adxl359_lock)
-        
-
-        # # Connect the thread signals to slots in the main window
-        self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
         self.adxl359_thread.adxl359_plot_signal.connect(self.update_adxl359_feed)
-
-
         self.sensor_processes = multiprocessing.Process(target=update_adxl359_vib_data_shm,args=(self.adxl359_vib_data_shm.name,self.adxl359_temp_shm.name, self.adxl359_vib_data_shape,self.adxl359_lock))
         self.sensor_processes.start()
+
+
+
+
+        self.camera_one_lock = multiprocessing.Lock()
+        self.camera_two_lock = multiprocessing.Lock()
+        self.camera_shape = (480, 640, 3)
+        self.camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
+        self.camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
+
+
+        self.camera_thread = CameraThread(self,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock)
+        
+        # # Connect the thread signals to slots in the main window
+        self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
+        
+
+
+        
         self.terminate_event = multiprocessing.Event()
-        self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
+        self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock))
         self.camera_processes.start()
 
 
@@ -507,14 +303,11 @@ class MainWindow(QMainWindow):
                 self.terminate_event.set()
                 self.camera_processes.join()
                 self.terminate_event = multiprocessing.Event()
-                self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event))
+                self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock))
                 self.camera_processes.start()
 
     def exit_application(self):
-        global camera_one_shm 
-        global camera_two_shm 
-        global adxl359_vib_data_shm
-
+   
         print(" Cleaning threads")
         if self.camera_thread.isRunning():
             self.camera_thread.quit()
@@ -536,13 +329,13 @@ class MainWindow(QMainWindow):
             print("child is done")
 
         print("Cleaning mem")
-        camera_one_shm.close()  # Detach from the shared memory
-        camera_one_shm.unlink()  # Deallocate the shared memory
+        self.camera_one_shm.close()  # Detach from the shared memory
+        self.camera_one_shm.unlink()  # Deallocate the shared memory
         self.adxl359_temp_shm.close()
         self.adxl359_temp_shm.unlink()
 
-        camera_two_shm.close()  # Detach from the shared memory
-        camera_two_shm.unlink()  # Deallocate the shared memory
+        self.camera_two_shm.close()  # Detach from the shared memory
+        self.camera_two_shm.unlink()  # Deallocate the shared memory
 
         self.adxl359_vib_data_shm.close()  # Detach from the shared memory
         self.adxl359_vib_data_shm.unlink()  # Deallocate the shared memory
@@ -576,9 +369,6 @@ class MainWindow(QMainWindow):
 
     def display_image(self, label, image_pixmap):
         label.setPixmap(image_pixmap.scaled(label.width,label.height))
-
-
-
 
 
 
