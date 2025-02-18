@@ -56,7 +56,8 @@
 //  
 // INSTRUCTIONS FOR GMSL-A SERIALIZER MAX96717
 //  
-// MIPI DPHY Configuration
+
+
 0x04,0x80,0x03,0x30,0x00, // MIPI_RX : MIPI_RX0 | (Default) phy_config (Port Configuration): 1x4
 0x04,0x80,0x03,0x83,0x80, // MIPI_RX_EXT : EXT11 | (Default) Tun_Mode (Tunnel Mode): Enabled
 0x04,0x80,0x03,0x31,0x10, // MIPI_RX : MIPI_RX1 | ctrl1_num_lanes (Port B - Lane Count): 2

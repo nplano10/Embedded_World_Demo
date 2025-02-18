@@ -1,28 +1,13 @@
-import sys
-import numpy as np
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QPushButton, QDesktopWidget,QHBoxLayout,QComboBox,QTextEdit
 
+import numpy as np
+from PyQt5.QtGui import QImage
 from multiprocessing import shared_memory
-from picamera2 import Picamera2
 from  adxl359  import ADXL359
-from io import BytesIO
-import cv2
-import copy
-import matplotlib.pyplot as plt
-import multiprocessing
 import time
 import pyqtgraph as pg
-import argparse
-from multiprocessing import Process, Queue
-from sony_code.imx500_object_detection_SORT import IMX500Detector
-from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
-from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
-import sony_code.imx500_object_detection_demo as ob_det
 import time
-from enum import Enum
-import json
+
+
 
 def pixmap_to_numpy(pixmap):
     # Convert QPixmap to QImage

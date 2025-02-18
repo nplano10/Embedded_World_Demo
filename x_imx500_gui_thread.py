@@ -17,7 +17,6 @@ import pyqtgraph as pg
 import argparse
 from multiprocessing import Process, Queue
 from sony_code.imx500_object_detection_SORT import IMX500Detector
-from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
 from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
 import sony_code.imx500_object_detection_demo as ob_det
 import time

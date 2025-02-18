@@ -18,7 +18,23 @@ cam.LOG = True  # Enable logging
 #cam.regWrite(HS97, 0x10, 0x91)
 #time.sleep(0.2)
 
+
+
 cam.parseFile('MAX96717+MAX96716A_tunnel.cpp')
+
+
+val = cam.regRead(HS97, 0x4D)
+print(val)
+time.sleep(0.2)
+
+
+val = cam.regRead(HS97, 0x4C)
+print(val)
+time.sleep(0.2)
+
+
+
+
 
 # MAX96717 Setup
 # cam.regWrite(HS97, 0x110, 0x6C)     # PCLK_DET bypass

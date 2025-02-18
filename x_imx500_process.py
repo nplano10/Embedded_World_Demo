@@ -1,48 +1,29 @@
-import sys
-import numpy as np
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QPushButton, QDesktopWidget,QHBoxLayout,QComboBox,QTextEdit
 
+import numpy as np
 from multiprocessing import shared_memory
 from picamera2 import Picamera2
-from  adxl359  import ADXL359
-from io import BytesIO
-import cv2
-import copy
-import matplotlib.pyplot as plt
-import multiprocessing
-import time
-import pyqtgraph as pg
 import argparse
 from multiprocessing import Process, Queue
 from sony_code.imx500_object_detection_SORT import IMX500Detector
 from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
 from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
+from sony_code.imx500_no_model import IMX500NoModel
 import sony_code.imx500_object_detection_demo as ob_det
 import time
 from enum import Enum
-import json
 
 
 class Model(Enum):
-    OBJECT = 1
-    SMARTIE = 2
-    SONY = 3
-    NOMODEL = 4
+    NOMODEL = 1
+    SONY = 2
 
+def anomaly_process(event,bbox_queue, results_queue, args,camera_two_shm_name,camera_shape,camera_two_lock):
 
-
-def anomaly_process(event,bbox_queue, results_queue, args):
-
-    global camera_two_lock
-    global camera_two_shm
-    global camera_shape 
     detector = IMX500AnomalyDetector(args)
     detector.picam2.pre_callback = lambda req: detector.process_frame(
         req, bbox_queue, results_queue)
     print("Done loading model")
-    two_shm = shared_memory.SharedMemory(name=camera_two_shm.name)
+    two_shm = shared_memory.SharedMemory(name=camera_two_shm_name)
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
 
     while not event.is_set():
@@ -50,16 +31,12 @@ def anomaly_process(event,bbox_queue, results_queue, args):
         with camera_two_lock:
             two_image[:] =detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
-def detection_process(event,bbox_queue, results_queue, args):
-    global camera_one_lock
-    global camera_one_shm
-    global camera_shape 
+def detection_process(event,bbox_queue, results_queue, args,camera_one_shm_name,camera_shape,camera_one_lock):
+
 
     detector = IMX500Detector(args)
     detector.picam2.pre_callback = lambda req: detector.draw_detections(req, results_queue)
-    print("Done loading model")
-
-    one_shm = shared_memory.SharedMemory(name=camera_one_shm.name)
+    one_shm = shared_memory.SharedMemory(name=camera_one_shm_name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     while not event.is_set():
         time.sleep(1/30)
@@ -78,14 +55,8 @@ def detection_process(event,bbox_queue, results_queue, args):
 
 def no_model_process(event, camera_one_shm_name,camera_two_shm_name,camera_shape,camera_one_lock,camera_two_lock):
 
-    picam2_0 = Picamera2(0)
-    picam2_0.video_configuration.controls.FrameRate = 30.0
-    picam2_0.video_configuration.size = (640, 480)
-    picam2_0.start("video")
-    picam2_1 = Picamera2(1)
-    picam2_1.video_configuration.controls.FrameRate = 30.0
-    picam2_1.video_configuration.size = (640, 480)
-    picam2_1.start("video")
+    imx500_1 = IMX500NoModel(0)
+    imx500_2 = IMX500NoModel(1)
     one_shm = shared_memory.SharedMemory(name=camera_one_shm_name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     two_shm = shared_memory.SharedMemory(name=camera_two_shm_name)
@@ -94,9 +65,9 @@ def no_model_process(event, camera_one_shm_name,camera_two_shm_name,camera_shape
     while not event.is_set():
         time.sleep(1/30)
         with camera_one_lock:  
-            one_image[:] = picam2_0.capture_array().astype(np.uint8)[:, :, :3]
+            one_image[:] = imx500_1.picam2.capture_array().astype(np.uint8)[:, :, :3]
         with camera_two_lock:
-            two_image[:] =picam2_1.capture_array().astype(np.uint8)[:, :, :3]
+            two_image[:] =imx500_2.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
        
 
@@ -164,21 +135,14 @@ def update_imx500_shm(selected_model,event, camera_one_shm_name,camera_two_shm_n
     )
 
 
-    pill_detection_proc = Process(target=detection_process, args=(event,bbox_queue, results_queue, pill_detection_args))
-    anomaly_detection_proc = Process(target=anomaly_process, args=(event,bbox_queue, results_queue, anomaly_detection_args))
+    pill_detection_proc = Process(target=detection_process, args=(event,bbox_queue, results_queue, pill_detection_args, camera_one_shm_name,camera_shape,camera_one_lock))
+    anomaly_detection_proc = Process(target=anomaly_process, args=(event,bbox_queue, results_queue, anomaly_detection_args,camera_two_shm_name,camera_shape,camera_two_lock))
 
     if selected_model == Model.SONY:
         pill_detection_proc.start()
         anomaly_detection_proc.start()
         pill_detection_proc.join()
-        anomaly_detection_proc.join()pun
+        anomaly_detection_proc.join()
     
     if selected_model == Model.NOMODEL:
        no_model_process(event, camera_one_shm_name,camera_two_shm_name,camera_shape,camera_one_lock,camera_two_lock)
-
-    if selected_model == Model.OBJECT:
-        
-        obj_detection_process(event,0,camera_one_shm_name,camera_two_shm_name,camera_shape,camera_one_lock,camera_two_lock)
-
-    if selected_model == Model.SMARTIE:
-        obj_detection_process(event,1,camera_one_shm_name,camera_two_shm_name,camera_shape,camera_one_lock,camera_two_lock)

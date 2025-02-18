@@ -38,7 +38,7 @@ class RandomImageWindow(QMainWindow):
         
         
         self.picam2_1.start()
-        self.set_camera_config("desk_lamp_settings.json")
+        self.set_camera_config("camera_settings.json")
         time.sleep(1)
         
         

@@ -163,7 +163,7 @@ class IMX500Detector:
         self.picam2.start(config)
         if self.intrinsics.preserve_aspect_ratio:
             self.imx500.set_auto_aspect_ratio()
-        self.set_camera_config("desk_lamp_settings.json")
+        self.set_camera_config("camera_settings.json")
 
     def set_camera_config(self,json_file):
             with open(json_file, 'r') as file:

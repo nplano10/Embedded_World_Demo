@@ -66,7 +66,7 @@ class IMX500AnomalyDetector:
             buffer_count=12
         )
         self.picam2.start()
-        self.set_camera_config("desk_lamp_settings.json")
+        self.set_camera_config("camera_settings.json")
 
     def set_camera_config(self,json_file):
             with open(json_file, 'r') as file:
@@ -168,24 +168,6 @@ class IMX500AnomalyDetector:
         self.frame_count += 1
         try:
             if self.frame_state == 0:  # setting ROI
-                # testing code
-                # bbox = {
-                #     'x': 400,
-                #     'y': 250,
-                #     'w': 60,
-                #     'h': 60,
-                #     'id': 1,
-                #     'time': time.time(),
-                #     'speed': 5
-                # }
-                # bbox_id = bbox["id"]
-                # scaled_bbox = self.scale_bbox_to_detection(
-                #         (bbox['x'], bbox['y'], bbox['w'], bbox['h'], bbox['time'], bbox['speed']),
-                #         scale_x=6.3375,
-                #         scale_y=6.3333
-                #     )
-                # self.imx500.set_inference_roi_abs(scaled_bbox)
-                # self.current_bbox_id = bbox_id
 
                 if not bbox_queue.empty():
                     bbox = bbox_queue.get()

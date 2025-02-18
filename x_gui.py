@@ -1,39 +1,12 @@
-
-import sys
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtCore import QTimer, QThread
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QPushButton, QDesktopWidget,QHBoxLayout,QComboBox,QTextEdit
-
 from multiprocessing import shared_memory
-from picamera2 import Picamera2
-from  adxl359  import ADXL359
-from io import BytesIO
-import cv2
-import copy
-import matplotlib.pyplot as plt
 import multiprocessing
-import time
-import pyqtgraph as pg
-import argparse
-from multiprocessing import Process, Queue
-from sony_code.imx500_object_detection_SORT import IMX500Detector
-from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
-from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
-import sony_code.imx500_object_detection_demo as ob_det
-import time
-from enum import Enum
-import json
-
-
-from x_shared_mem_adxl import update_adxl359_vib_data_shm
-from x_shared_mem_camera import Model, update_imx500_shm
-from x_camera_thread_gui import CameraThread
-from x_adxl_thread_gui import Adxl359Thread
-
-
-
-
+from x_adxl_process import update_adxl359_vib_data_shm
+from x_imx500_process import Model, update_imx500_shm
+from x_imx500_gui_thread import CameraThread
+from x_adxl_gui_thread import Adxl359Thread
 
 
 class MainWindow(QMainWindow):
@@ -42,7 +15,6 @@ class MainWindow(QMainWindow):
 
         self.imx500_height = 480
         self.imx500_height = 640 
-        self.imx500_fps = 60
         self.adxl359_sample_rate = 1000
         self.adxl359_sample_length = 1000 
 
@@ -55,7 +27,6 @@ class MainWindow(QMainWindow):
 
         # Set up the central widget and the main layout
         central_widget = QWidget(self)
-        central_widget.setStyleSheet("background-color: #2f2f2f;")
         self.setCentralWidget(central_widget)
 
         # Create the main layout (vertical)
@@ -233,14 +204,17 @@ class MainWindow(QMainWindow):
 
 
 
-        
-  
 
 
 
 
 
-  
+
+
+
+
+
+
 
         #Set up the QTimer to update the images every 2 seconds (2000ms)
         self.camera_timer = QTimer(self)
@@ -250,10 +224,6 @@ class MainWindow(QMainWindow):
         self.adxl359_timer= QTimer(self)
         self.adxl359_timer.timeout.connect(self.start_sensor_thread)
         self.adxl359_timer.start(int(1000))  # Update every 2000ms (2 seconds)
-
-
-
-
 
         self.adxl359_lock  = multiprocessing.Lock()
         self.adxl359_vib_data_shape =(320,850,3,6)
@@ -266,23 +236,15 @@ class MainWindow(QMainWindow):
         self.sensor_processes.start()
 
 
-
-
         self.camera_one_lock = multiprocessing.Lock()
         self.camera_two_lock = multiprocessing.Lock()
         self.camera_shape = (480, 640, 3)
         self.camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
         self.camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
-
-
         self.camera_thread = CameraThread(self,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock)
         
         # # Connect the thread signals to slots in the main window
         self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
-        
-
-
-        
         self.terminate_event = multiprocessing.Event()
         self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock))
         self.camera_processes.start()
@@ -370,16 +332,3 @@ class MainWindow(QMainWindow):
     def display_image(self, label, image_pixmap):
         label.setPixmap(image_pixmap.scaled(label.width,label.height))
 
-
-
-
-
-# Main function to start the application
-def main():
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
-
-if __name__ == '__main__':
-    main()

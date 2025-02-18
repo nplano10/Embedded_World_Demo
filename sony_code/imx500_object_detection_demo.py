@@ -52,7 +52,7 @@ class IMX500ObjectDetector:
         self.picam2 = Picamera2(self.imx500.camera_num)
         config = self.picam2.create_preview_configuration(controls={"FrameRate": self.intrinsics.inference_rate}, buffer_count=12)
         
-        with open("desk_lamp_settings.json", 'r') as file:
+        with open("camera_settings.json", 'r') as file:
             controls = json.load(file)
             self.picam2.set_controls(controls["controls"])
 
