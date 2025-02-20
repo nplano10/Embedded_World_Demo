@@ -14,7 +14,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.imx500_height = 480
-        self.imx500_height = 640 
+        self.imx500_width = 640 
         self.adxl359_sample_rate = 1000
         self.adxl359_sample_length = 1000 
 
@@ -216,7 +216,7 @@ class MainWindow(QMainWindow):
 
 
 
-        #Set up the QTimer to update the images every 2 seconds (2000ms)
+        # Set up the QTimer to update the images every 2 seconds (2000ms)  # TODO: do we need to continually restart this thread
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.start_camera_thread)
         self.camera_timer.start(int(1000/25))  # Update every 2000ms (2 seconds)
@@ -265,8 +265,19 @@ class MainWindow(QMainWindow):
                 self.terminate_event.set()
                 self.camera_processes.join()
                 self.terminate_event = multiprocessing.Event()
-                self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock))
-                self.camera_processes.start()
+                self.camera_processes = multiprocessing.Process(
+                    target=update_imx500_shm,
+                    args=(
+                        self.model,
+                        self.terminate_event,
+                        self.camera_one_shm.name,
+                        self.camera_two_shm.name,
+                        self.camera_shape,
+                        self.camera_one_lock,
+                        self.camera_two_lock
+                    )
+                )
+                self.camera_processes.start()  # TODO: start this process outside the "IF"?
 
     def exit_application(self):
    
@@ -307,7 +318,7 @@ class MainWindow(QMainWindow):
         print("exiting")
         QApplication.exit()
 
-    def start_camera_thread(self):
+    def start_camera_thread(self):  # TODO: this thread respawns after ctrl-c
         self.camera_thread.start()
         self.camera_thread.setPriority(QThread.TimeCriticalPriority)
 

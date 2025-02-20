@@ -27,7 +27,7 @@ def anomaly_process(event,bbox_queue, results_queue, args,camera_two_shm_name,ca
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
 
     while not event.is_set():
-        time.sleep(1/30)
+        time.sleep(1/30)  # TODO: running at 20 fps or 30?
         with camera_two_lock:
             two_image[:] =detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
@@ -39,7 +39,7 @@ def detection_process(event,bbox_queue, results_queue, args,camera_one_shm_name,
     one_shm = shared_memory.SharedMemory(name=camera_one_shm_name)
     one_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=one_shm.buf)
     while not event.is_set():
-        time.sleep(1/30)
+        time.sleep(1/30)  # TODO: running at 20 fps or 30?
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             metadata = detector.picam2.capture_metadata()
             detector.last_results = detector.parse_detections(
@@ -63,7 +63,7 @@ def no_model_process(event, camera_one_shm_name,camera_two_shm_name,camera_shape
     two_image = np.ndarray(camera_shape, dtype=np.uint8, buffer=two_shm.buf)
 
     while not event.is_set():
-        time.sleep(1/30)
+        time.sleep(1/30)  # TODO: running at 20 fps or 30?
         with camera_one_lock:  
             one_image[:] = imx500_1.picam2.capture_array().astype(np.uint8)[:, :, :3]
         with camera_two_lock:
@@ -90,7 +90,7 @@ def obj_detection_process(event,mode,camera_one_shm_name,camera_two_shm_name,cam
     camera1.picam2.pre_callback = camera1.draw_detections
     camera2.picam2.pre_callback = camera2.draw_detections
     while not event.is_set():
-        time.sleep(1/30)
+        time.sleep(1/30)  # TODO: running at 20 fps or 30?
         with camera_one_lock:  # Ensure exclusive access to the shared memory
             meta_data = camera1.picam2.capture_metadata()
             camera1.last_results = camera1.parse_detections(meta_data)
@@ -115,7 +115,7 @@ def update_imx500_shm(selected_model,event, camera_one_shm_name,camera_two_shm_n
         model="sony_code/Models/detection-imx500/network.rpk", 
         labels="sony_code/Models/detection-imx500/labels.txt",
         camera_index=0,
-        fps=20,
+        fps=30,
         max_disappeared=20,
         iou=0.65,
         threshold=0.5,

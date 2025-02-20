@@ -64,7 +64,7 @@ class CameraThread(QThread):
         if (self.previous_camera_one is None or not np.array_equal(camera_one, self.previous_camera_one)) or \
            (self.previous_camera_two is None or not np.array_equal(camera_two, self.previous_camera_two)):
             # Update previous images with current ones
-            self.previous_camera_one = camera_one.copy()
+            self.previous_camera_one = camera_one.copy()  # TODO: do we need to do another copy after the prev deepcopy?
             self.previous_camera_two = camera_two.copy()
             # Emit the signal with the new data 
             self.camera_feed_signal.emit((self.numpy_arrray_to_pixmap(camera_one), self.numpy_arrray_to_pixmap(camera_two)))
