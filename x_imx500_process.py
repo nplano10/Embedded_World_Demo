@@ -15,7 +15,7 @@ from enum import Enum
 
 class Model(Enum):
     NOMODEL = 1
-    SONY = 2
+    TRAINED = 2
 
 def anomaly_process(event,bbox_queue, results_queue, args,camera_two_shm_name,camera_shape,camera_two_lock):
 
@@ -138,7 +138,7 @@ def update_imx500_shm(selected_model,event, camera_one_shm_name,camera_two_shm_n
     pill_detection_proc = Process(target=detection_process, args=(event,bbox_queue, results_queue, pill_detection_args, camera_one_shm_name,camera_shape,camera_one_lock))
     anomaly_detection_proc = Process(target=anomaly_process, args=(event,bbox_queue, results_queue, anomaly_detection_args,camera_two_shm_name,camera_shape,camera_two_lock))
 
-    if selected_model == Model.SONY:
+    if selected_model == Model.TRAINED:
         pill_detection_proc.start()
         anomaly_detection_proc.start()
         pill_detection_proc.join()

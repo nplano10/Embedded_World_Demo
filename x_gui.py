@@ -4,14 +4,17 @@ from PyQt5.QtWidgets import (
     QApplication,
     QLabel,
     QMainWindow,
-    QTabWidget,
+    # QTabWidget,
     QVBoxLayout,
     QWidget,
     QPushButton,
     QDesktopWidget,
     QHBoxLayout,
-    QComboBox,
+    # QComboBox,
     QTextEdit,
+    QButtonGroup,
+    QRadioButton,
+    QMessageBox,
 )
 from multiprocessing import shared_memory
 import multiprocessing
@@ -28,7 +31,9 @@ class MainWindow(QMainWindow):
         self.imx500_height = 480
         self.imx500_width = 640 
         self.adxl359_sample_rate = 1000
-        self.adxl359_sample_length = 1000 
+        self.adxl359_sample_length = 1000
+
+        self.model = Model.NOMODEL
 
         # Set up the window to match the screen size
         screen = QDesktopWidget().screenGeometry()
@@ -52,59 +57,12 @@ class MainWindow(QMainWindow):
         # Create the bottom row (buttons, temperature, plots)
         bottom_layout = QHBoxLayout()
 
-        # Create control buttons (Exit, Start, Stop)
-        height_buttons = int(screen_height*(1/32))
-        width_buttons = int(screen_width/16)
-
-        button_exit = QPushButton('Exit', self)
-        button_exit.clicked.connect(self.exit_application)
-        button_exit.setFixedSize(width_buttons,height_buttons)
-
-        button_start = QPushButton('Start', self)
-        button_start.setFixedSize(width_buttons,height_buttons)
-
-        button_stop = QPushButton('Stop', self)
-        button_stop.setFixedSize(width_buttons,height_buttons)
-
-        button_dispense = QPushButton('Dispense', self)
-        button_dispense.setFixedSize(width_buttons,height_buttons)
-
-        # Create button layout and add buttons to it
-        button_layout = QVBoxLayout()
-        button_layout.addWidget(button_exit)
-        button_layout.addWidget(button_start)
-        button_layout.addWidget(button_stop)
-        button_layout.addWidget(button_dispense)
-
-        # Create Apply Model button and dropdown
-        apply_model_button = QPushButton('Apply Model', self)
-        apply_model_button.clicked.connect(self.apply_model)  # Connect to a function for applying model
-        apply_model_button.setFixedSize(width_buttons,height_buttons)
-        self.model = Model.NOMODEL
-
-        # Create dropdown for model selection
-        self.model_dropdown = QComboBox(self)
-        self.model_dropdown.setFixedSize(width_buttons,height_buttons)
-
-        for model in Model:
-            self.model_dropdown.addItem(model.name, model)
-
-        # Create a horizontal layout for Apply Model button and dropdown
-        apply_model_layout = QHBoxLayout()
-        apply_model_layout.addWidget(apply_model_button)
-        apply_model_layout.addWidget(self.model_dropdown)
-
-        # Create temperature label
-        self.temperature_label = QLabel(self)
-        self.temperature_label.setStyleSheet("font-size: 18px;")
-
-        # Add buttons, apply model controls, and temperature label to the bottom-left layout
-        button_layout.addLayout(apply_model_layout)
-        button_layout.addWidget(self.temperature_label)
+        # Create control buttons (Start, Stop)
+        button_layout = self.button_layout(screen_height, screen_width)
 
         # Add the buttons, apply model controls, and temperature layout to the bottom-left of the layout
         bottom_layout.addLayout(button_layout)
-        bottom_layout.addStretch(1) 
+        bottom_layout.addStretch(1)
 
         # Create a vertical layout for the vibration plots (3 plots on the left)
         vib_layout = self.vibration_layout(screen_height, screen_width)
@@ -157,24 +115,113 @@ class MainWindow(QMainWindow):
         self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock))
         self.camera_processes.start()
 
+    def closeEvent(self, event):
+        # This function will be triggered when the window is closed (clicked on "X")
+        reply = QMessageBox.question(self, 'Confirm Exit', 
+                                     'Are you sure you want to exit?', 
+                                     QMessageBox.Yes | QMessageBox.No, 
+                                     QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            self.exit_application()
+            event.accept()  # Accept the event, allowing the window to close
+        else:
+            event.ignore()  # Ignore the event, preventing the window from closing
+
+    def button_layout(self, screen_height, screen_width):
+        height_buttons = int(screen_height * (1 / 32))
+        width_buttons = int(screen_width / 16)
+
+        # button_exit = QPushButton("Exit", self)
+        # button_exit.clicked.connect(self.exit_application)
+        # button_exit.setFixedSize(width_buttons, height_buttons)
+
+        button_start = QPushButton("Start", self)
+        button_start.setFixedSize(width_buttons, height_buttons)
+
+        button_stop = QPushButton("Stop", self)
+        button_stop.setFixedSize(width_buttons, height_buttons)
+
+        button_dispense = QPushButton("Dispense", self)
+        button_dispense.setFixedSize(width_buttons, height_buttons)
+
+        # Create button layout and add buttons to it
+        button_layout = QVBoxLayout()
+        # button_layout.addWidget(button_exit)
+        button_layout.addWidget(button_start)
+        button_layout.addWidget(button_stop)
+        button_layout.addWidget(button_dispense)
+
+        # Create Apply Model button and dropdown
+        apply_model_button = QPushButton("Apply Model", self)
+        apply_model_button.clicked.connect(
+            self.apply_model
+        )  # Connect to a function for applying model
+        apply_model_button.setFixedSize(width_buttons, height_buttons)
+        apply_model_button.setStyleSheet(
+            "background-color: lightblue; border: 1px solid lightgray;"
+        )
+
+        # # Create dropdown for model selection
+        # self.model_dropdown = QComboBox(self)
+        # self.model_dropdown.setFixedSize(width_buttons,height_buttons)
+
+        # for model in Model:
+        #     self.model_dropdown.addItem(model.name, model)
+
+        # # Create a horizontal layout for Apply Model button and dropdown
+        # apply_model_layout = QHBoxLayout()
+        # apply_model_layout.addWidget(apply_model_button)
+        # apply_model_layout.addWidget(self.model_dropdown)
+
+        # Create radio buttons for model selection
+        self.model_selection = QButtonGroup()
+        models = list(Model)
+        self.radio_button1 = QRadioButton(models[0].name)
+        self.radio_button2 = QRadioButton(models[1].name)
+        if models[0] == self.model:
+            self.radio_button1.setChecked(True)
+        else:
+            self.radio_button2.setChecked(True)
+
+        apply_model_layout = QVBoxLayout()
+        apply_model_layout.addWidget(self.radio_button1)
+        apply_model_layout.addWidget(self.radio_button2)
+        self.model_selection.addButton(self.radio_button1)
+        self.model_selection.addButton(self.radio_button2)
+        apply_model_layout.addWidget(apply_model_button)
+
+        button_layout.addLayout(apply_model_layout)
+
+        # # Create temperature label
+        # self.temperature_label = QLabel(self)
+        # self.temperature_label.setStyleSheet("font-size: 18px;")
+
+        # # Add buttons, apply model controls, and temperature label to the bottom-left layout
+        # button_layout.addWidget(self.temperature_label)
+
+        return button_layout
+
     def camera_layout(self, screen_height, screen_width):
 
         cam_layout = QHBoxLayout()
+        scale = 1.45
+        cam_height = int(screen_height * scale / 3)
+        cam_width = int(screen_width * scale / 4)
+        log_height = cam_height
+        log_width = int(screen_width / 8)
 
         # Camera feed 1 and its logging window
         cam_1_layout = QHBoxLayout()
-        cam_height, cam_width = int(screen_height / 3), int(screen_width / 4)
         self.camera_feed_1 = self.camera_feed(
             cam_height, cam_width, title="Camera Feed 1"
         )
-        cam_1_layout.addWidget(self.camera_feed_1)
-
-        # Logging window for camera feed 1
-        log_height, log_width = int(screen_height / 3), int(screen_width / 8)
         self.log_1 = self.camera_log(
-            log_height, log_width, title="Logging window for Camera Feed 1..."
+            log_height, log_width, title="Camera 1 Logging"
         )
+
         cam_1_layout.addWidget(self.log_1)
+        cam_1_layout.addWidget(self.camera_feed_1)
         cam_layout.addLayout(cam_1_layout)
 
         # Camera feed 2 and its logging window
@@ -182,12 +229,11 @@ class MainWindow(QMainWindow):
         self.camera_feed_2 = self.camera_feed(
             cam_height, cam_width, title="Camera Feed 2"
         )
-        cam_2_layout.addWidget(self.camera_feed_2)
-
-        # Logging window for camera feed 2
         self.log_2 = self.camera_log(
-            log_height, log_width, title="Logging window for Camera Feed 2..."
+            log_height, log_width, title="Camera 2 Logging"
         )
+
+        cam_2_layout.addWidget(self.camera_feed_2)
         cam_2_layout.addWidget(self.log_2)
         cam_layout.addLayout(cam_2_layout)
 
@@ -213,9 +259,9 @@ class MainWindow(QMainWindow):
         return camera_log
 
     def vibration_layout(self, screen_height, screen_width):
-        vib_layout = QVBoxLayout()
+        vib_layout = QHBoxLayout()
 
-        vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 3)
+        vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 4.5)
         self.vibx_graph = self.vibration_graph(vib_height, vib_width)
         self.viby_graph = self.vibration_graph(vib_height, vib_width)
         self.vibz_graph = self.vibration_graph(vib_height, vib_width)
@@ -238,21 +284,25 @@ class MainWindow(QMainWindow):
         # Create a vertical layout for the anomaly plots (far right)
         anomaly_plot_layout = QVBoxLayout()
 
-        vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 3)
+        vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 4.5)
         self.vibx_anomaly_graph = self.vibration_graph(vib_height, vib_width)
-        self.viby_anomaly_graph = self.vibration_graph(vib_height, vib_width)
-        self.vibz_anomaly_graph = self.vibration_graph(vib_height, vib_width)
+        # self.viby_anomaly_graph = self.vibration_graph(vib_height, vib_width)
+        # self.vibz_anomaly_graph = self.vibration_graph(vib_height, vib_width)
 
         # Add the anomaly plots to the vertical layout
         anomaly_plot_layout.addWidget(self.vibx_anomaly_graph)
-        anomaly_plot_layout.addWidget(self.viby_anomaly_graph)
-        anomaly_plot_layout.addWidget(self.vibz_anomaly_graph)
+        # anomaly_plot_layout.addWidget(self.viby_anomaly_graph)
+        # anomaly_plot_layout.addWidget(self.vibz_anomaly_graph)
 
         return anomaly_plot_layout
 
     def apply_model(self):
         """Handle the Apply Model button action."""
-        selected_model = self.model_dropdown.currentData()
+        # selected_model = self.model_dropdown.currentData()
+        if self.radio_button1.isChecked():
+            selected_model = Model[self.radio_button1.text()]
+        else:
+            selected_model = Model[self.radio_button2.text()]
 
         if self.model== selected_model:
             print("no change")
@@ -333,7 +383,7 @@ class MainWindow(QMainWindow):
         self.display_image(self.vibx_graph, vibx_graph)
         self.display_image(self.viby_graph, viby_graph)
         self.display_image(self.vibz_graph, vibz_graph)
-        self.temperature_label.setText(f"Temperature: {temp[0]:.2f} °C")
+        # self.temperature_label.setText(f"Temperature: {temp[0]:.2f} °C")
 
     def display_image(self, label, image_pixmap):
         label.setPixmap(image_pixmap.scaled(label.width,label.height))
