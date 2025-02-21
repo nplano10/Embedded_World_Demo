@@ -1,5 +1,5 @@
 import numpy as np
-from PyQt5.QtCore import QTimer, QThread
+from PyQt5.QtCore import QTimer, QThread, Qt
 from PyQt5.QtWidgets import (
     QApplication,
     QLabel,
@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QButtonGroup,
     QRadioButton,
     QMessageBox,
+    QFrame,
 )
 from multiprocessing import shared_memory
 import multiprocessing
@@ -162,6 +163,10 @@ class MainWindow(QMainWindow):
         height_buttons = int(screen_height * (1 / 32))
         width_buttons = int(screen_width / 16)
 
+        # ============================
+        # Set up buttons
+        # ============================
+
         button_start = QPushButton("Start", self)
         button_start.setFixedSize(width_buttons, height_buttons)
         button_start.setStyleSheet(
@@ -180,9 +185,17 @@ class MainWindow(QMainWindow):
         )
         # Create button layout and add buttons to it
         button_layout = QVBoxLayout()
-        button_layout.addWidget(button_start)
-        button_layout.addWidget(button_stop)
-        button_layout.addWidget(button_dispense)
+        button_layout.addWidget(button_start, alignment=Qt.AlignCenter)
+        button_layout.addWidget(button_stop, alignment=Qt.AlignCenter)
+        button_layout.addWidget(button_dispense, alignment=Qt.AlignCenter)
+
+        # ============================
+        # Set up model selection
+        # ============================
+        # Group the model selection widgets together
+        group_frame = QFrame()
+        group_frame.setFrameShape(QFrame.StyledPanel)  # Border style
+        group_frame.setFrameShadow(QFrame.Raised)     # Shadow effect (optional)
 
         # Create Apply Model button and dropdown
         apply_model_button = QPushButton("Apply Model", self)
@@ -194,38 +207,28 @@ class MainWindow(QMainWindow):
             "background-color: lightblue; border: 1px solid lightgray;"
         )
 
-        # # Create dropdown for model selection
-        # self.model_dropdown = QComboBox(self)
-        # self.model_dropdown.setFixedSize(width_buttons,height_buttons)
-
-        # for model in Model:
-        #     self.model_dropdown.addItem(model.name, model)
-
-        # # Create a horizontal layout for Apply Model button and dropdown
-        # apply_model_layout = QHBoxLayout()
-        # apply_model_layout.addWidget(apply_model_button)
-        # apply_model_layout.addWidget(self.model_dropdown)
-
         # Create radio buttons for model selection
-        self.model_selection = QButtonGroup()
         models = list(Model)
         self.radio_button1 = QRadioButton(models[0].name)
-        self.radio_button1.setStyleSheet("color: white;")
         self.radio_button2 = QRadioButton(models[1].name)
+        self.radio_button1.setStyleSheet("color: white;")
         self.radio_button2.setStyleSheet("color: white;")
         if models[0] == self.model:
             self.radio_button1.setChecked(True)
         else:
             self.radio_button2.setChecked(True)
 
-        apply_model_layout = QVBoxLayout()
+        # self.model_selection = QButtonGroup()  # create exclusive selection
+        # self.model_selection.addButton(self.radio_button1)
+        # self.model_selection.addButton(self.radio_button2)
+
+        apply_model_layout = QVBoxLayout(group_frame)
         apply_model_layout.addWidget(self.radio_button1)
         apply_model_layout.addWidget(self.radio_button2)
-        self.model_selection.addButton(self.radio_button1)
-        self.model_selection.addButton(self.radio_button2)
         apply_model_layout.addWidget(apply_model_button)
 
-        button_layout.addLayout(apply_model_layout)
+        # button_layout.addLayout(apply_model_layout)
+        button_layout.addWidget(group_frame)
 
         # # Create temperature label
         # self.temperature_label = QLabel(self)
@@ -326,7 +329,6 @@ class MainWindow(QMainWindow):
 
     def apply_model(self):
         """Handle the Apply Model button action."""
-        # selected_model = self.model_dropdown.currentData()
         if self.radio_button1.isChecked():
             selected_model = Model[self.radio_button1.text()]
         else:
