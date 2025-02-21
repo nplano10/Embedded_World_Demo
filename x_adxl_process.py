@@ -1,5 +1,6 @@
 import numpy as np
 from PyQt5.QtGui import QImage
+from PyQt5.QtCore import Qt
 from multiprocessing import shared_memory
 from  adxl359  import ADXL359
 import time
@@ -56,8 +57,9 @@ def update_adxl359_vib_data_shm(
     adxl359_vib_data_shape,
     adxl359_lock,
 ):
-    anomaly_history = 20
     vib_ylim = [-4, 4]
+    anomaly_threshold = 0.5
+    anomaly_history = 20
 
     h = adxl359_vib_data_shape[0]
     w = adxl359_vib_data_shape[1]
@@ -87,10 +89,34 @@ def update_adxl359_vib_data_shm(
     anomaly_score_plot.setYRange(0, 1)
 
     vib_anomaly_scores = np.zeros(anomaly_history)
-    anomaly_score_plot1_item = anomaly_score_plot.plot(
-        np.arange(anomaly_history),
+    index = np.arange(anomaly_history)
+
+    pen = pg.mkPen(color="orange", style=Qt.DashLine)
+    print(np.full((anomaly_history), anomaly_threshold))
+    _ = anomaly_score_plot.plot(
+        index,
+        np.full((anomaly_history), anomaly_threshold),
+        pen=pen,
+    )
+    anomaly_score_all_plot = anomaly_score_plot.plot(
+        index,
         vib_anomaly_scores,
-        pen="orange",
+        pen="lightgray"
+    )
+    anomaly_score_anom_plot = anomaly_score_plot.scatterPlot(
+        index,
+        vib_anomaly_scores,
+        symbol="o",
+        pen="red",
+        brush="pink",
+        name="Anomaly Score",
+    )
+    anomaly_score_norm_plot = anomaly_score_plot.scatterPlot(
+        index,
+        vib_anomaly_scores,
+        symbol="o",
+        pen="blue",
+        brush="lightblue",
         name="Anomaly Score",
     )
 
@@ -117,8 +143,14 @@ def update_adxl359_vib_data_shm(
         vib_anomaly_scores = update_anomaly_score_arrays(
             vib_anomaly_scores, x_data, y_data, z_data
         )
-        index = np.arange(20)
-        anomaly_score_plot1_item.setData(index, vib_anomaly_scores)
+        # vib_anomaly_scores_good = vib_anomaly_scores.copy()
+        # vib_anomaly_scores_bad = vib_anomaly_scores.copy()
+
+        bad_pts = vib_anomaly_scores >= anomaly_threshold
+
+        anomaly_score_all_plot.setData(index, vib_anomaly_scores)
+        anomaly_score_norm_plot.setData(index[~bad_pts], vib_anomaly_scores[~bad_pts])
+        anomaly_score_anom_plot.setData(index[bad_pts], vib_anomaly_scores[bad_pts])
 
         with adxl359_lock:                                        
             shared_adxl359_vib_data[:, :, :, 0] = pixmap_to_numpy(plot1.grab())
