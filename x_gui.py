@@ -28,8 +28,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.imx500_height = 480
-        self.imx500_width = 640 
+        self.camera_shape = (480, 640, 3)
         self.adxl359_sample_rate = 1000
         self.adxl359_sample_length = 1000
 
@@ -41,41 +40,32 @@ class MainWindow(QMainWindow):
         screen_height = int(screen.height()*0.90)
         self.setGeometry(0, 0, screen_width, screen_height)
 
+        # ============================
         # Set up the central widget and the main layout
+        # ============================
+
         central_widget = QWidget(self)
+        central_widget.setStyleSheet("background-color: black;")
         self.setCentralWidget(central_widget)
 
         # Create the main layout (vertical)
         main_layout = QVBoxLayout()
 
-        # Create the top row (camera feeds and logging windows)
+        # Add the camera layout (camera feeds and logging windows) to top row
         top_layout = self.camera_layout(screen_height, screen_width)
-
-        # Add the top row to the main layout
         main_layout.addLayout(top_layout)
 
-        # Create the bottom row (buttons, temperature, plots)
+        # Create the bottom row (buttons, temperature, vib plots)
         bottom_layout = QHBoxLayout()
 
-        # Create control buttons (Start, Stop)
-        button_layout = self.button_layout(screen_height, screen_width)
-
         # Add the buttons, apply model controls, and temperature layout to the bottom-left of the layout
+        button_layout = self.button_layout(screen_height, screen_width)
         bottom_layout.addLayout(button_layout)
         bottom_layout.addStretch(1)
 
-        # Create a vertical layout for the vibration plots (3 plots on the left)
+        # Add the plot layout to the bottom row (right side)
         vib_layout = self.vibration_layout(screen_height, screen_width)
-
-        # Add the plot layout to the bottom row (left side)
         bottom_layout.addLayout(vib_layout)
-        bottom_layout.addStretch(1) 
-
-        # Create a vertical layout for the anomaly plots (far right)
-        anomaly_plot_layout = self.vibration_anomaly_layout(screen_height, screen_width)
-
-        # Add the anomaly plot layout to the bottom row (right side)
-        bottom_layout.addLayout(anomaly_plot_layout)
         bottom_layout.addStretch(1) 
 
         # Add the bottom layout to the main layout
@@ -83,21 +73,28 @@ class MainWindow(QMainWindow):
         # Set the central widget layout
         central_widget.setLayout(main_layout)
 
+        # ============================
+        # Set up threads, shared memory for updating GUI contents
+        # ============================
+
         # Set up the QTimer to update the images at 25 fps seconds
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.start_camera_thread)
-        self.camera_timer.start(int(1000/25))  # Update 25 times every 1000ms
+        self.camera_timer.start(int(1000 / 25))  # Update 25 times every 1000ms
 
-        self.adxl359_timer= QTimer(self)
+        self.adxl359_timer = QTimer(self)
         self.adxl359_timer.timeout.connect(self.start_sensor_thread)
         self.adxl359_timer.start(int(1000))  # Update every 1000ms (1 second)
 
-        self.adxl359_lock  = multiprocessing.Lock()
-        self.adxl359_vib_data_shape = (180,320,3,4)
+        self.adxl359_lock = multiprocessing.Lock()
+        vib_h, vib_w = self.vibx_graph.height, self.vibx_graph.width
+        self.adxl359_vib_data_shape = (vib_h, vib_w, 3, 4)  # sync with layout size
         self.adxl359_vib_data_shm = shared_memory.SharedMemory(
             create=True, size=np.prod(self.adxl359_vib_data_shape) * np.uint8().itemsize
         )
-        self.adxl359_temp_shm = shared_memory.SharedMemory(create=True,size=np.float16().itemsize)
+        self.adxl359_temp_shm = shared_memory.SharedMemory(
+            create=True, size=np.float16().itemsize
+        )
 
         self.adxl359_thread = Adxl359Thread(
             self,
@@ -120,7 +117,6 @@ class MainWindow(QMainWindow):
 
         self.camera_one_lock = multiprocessing.Lock()
         self.camera_two_lock = multiprocessing.Lock()
-        self.camera_shape = (480, 640, 3)
         self.camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
         self.camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
         self.camera_thread = CameraThread(
@@ -132,7 +128,7 @@ class MainWindow(QMainWindow):
             self.camera_two_lock,
         )
 
-        # # Connect the thread signals to slots in the main window
+        # Connect the thread signals to slots in the main window
         self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
         self.terminate_event = multiprocessing.Event()
         self.camera_processes = multiprocessing.Process(
@@ -166,22 +162,24 @@ class MainWindow(QMainWindow):
         height_buttons = int(screen_height * (1 / 32))
         width_buttons = int(screen_width / 16)
 
-        # button_exit = QPushButton("Exit", self)
-        # button_exit.clicked.connect(self.exit_application)
-        # button_exit.setFixedSize(width_buttons, height_buttons)
-
         button_start = QPushButton("Start", self)
         button_start.setFixedSize(width_buttons, height_buttons)
+        button_start.setStyleSheet(
+            "background-color: darkgray; border: 1px solid lightgray; color: white;"
+        )
 
         button_stop = QPushButton("Stop", self)
         button_stop.setFixedSize(width_buttons, height_buttons)
-
+        button_stop.setStyleSheet(
+            "background-color: darkgray; border: 1px solid lightgray; color: white;"
+        )
         button_dispense = QPushButton("Dispense", self)
         button_dispense.setFixedSize(width_buttons, height_buttons)
-
+        button_dispense.setStyleSheet(
+            "background-color: darkgray; border: 1px solid lightgray; color: white;"
+        )
         # Create button layout and add buttons to it
         button_layout = QVBoxLayout()
-        # button_layout.addWidget(button_exit)
         button_layout.addWidget(button_start)
         button_layout.addWidget(button_stop)
         button_layout.addWidget(button_dispense)
@@ -212,7 +210,9 @@ class MainWindow(QMainWindow):
         self.model_selection = QButtonGroup()
         models = list(Model)
         self.radio_button1 = QRadioButton(models[0].name)
+        self.radio_button1.setStyleSheet("color: white;")
         self.radio_button2 = QRadioButton(models[1].name)
+        self.radio_button2.setStyleSheet("color: white;")
         if models[0] == self.model:
             self.radio_button1.setChecked(True)
         else:
@@ -239,9 +239,15 @@ class MainWindow(QMainWindow):
     def camera_layout(self, screen_height, screen_width):
 
         cam_layout = QHBoxLayout()
-        scale = 1.45
-        cam_height = int(screen_height * scale / 3)
-        cam_width = int(screen_width * scale / 4)
+
+        # Sizing camera feed. Maintain camera's aspect ratio
+        h = self.camera_shape[0]
+        w = self.camera_shape[1]
+        scale = h / w
+        cam_width = int(screen_width * 1.45 / 4)
+        cam_height = int(scale * cam_width)
+
+        # Sizing for log plot
         log_height = cam_height
         log_width = int(screen_width / 8)
 
@@ -296,15 +302,19 @@ class MainWindow(QMainWindow):
         vib_layout = QHBoxLayout()
 
         vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 4.5)
+        print(f"Vib graph height: {vib_height}")
+        print(f"Vib graph width: {vib_width}")
+
         self.vibx_graph = self.vibration_graph(vib_height, vib_width)
         self.viby_graph = self.vibration_graph(vib_height, vib_width)
         self.vibz_graph = self.vibration_graph(vib_height, vib_width)
+        self.vibx_anomaly_graph = self.vibration_graph(vib_height, vib_width)
 
-        # Update the plot data
-        # Add the plots to the vertical layout
+        # Add the plots to the horizontal layout
         vib_layout.addWidget(self.vibx_graph)
         vib_layout.addWidget(self.viby_graph)
         vib_layout.addWidget(self.vibz_graph)
+        vib_layout.addWidget(self.vibx_anomaly_graph)
         return vib_layout
 
     def vibration_graph(self, vib_height, vib_width):
@@ -313,20 +323,6 @@ class MainWindow(QMainWindow):
         vib_graph.width = vib_width
         vib_graph.setFixedSize(vib_graph.width, vib_graph.height)
         return vib_graph
-
-    def vibration_anomaly_layout(self, screen_height, screen_width):
-        # Create a vertical layout for the anomaly plots (far right)
-        anomaly_plot_layout = QVBoxLayout()
-
-        vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 4.5)
-        # print(f"Vib graph height: {vib_height}")
-        # print(f"Vib graph width: {vib_width}")
-        self.vibx_anomaly_graph = self.vibration_graph(vib_height, vib_width)
-
-        # Add the anomaly plots to the vertical layout
-        anomaly_plot_layout.addWidget(self.vibx_anomaly_graph)
-
-        return anomaly_plot_layout
 
     def apply_model(self):
         """Handle the Apply Model button action."""
