@@ -50,7 +50,17 @@ def update_anomaly_score_arrays(vib_anomaly_scores, vibx_data, viby_data, vibz_d
     return vib_anomaly_scores
 
 
-def update_adxl359_vib_data_shm(adxl359_vib_data_shm_name,adxl359_temp_shm_name, adxl359_vib_data_shape,adxl359_lock):
+def update_adxl359_vib_data_shm(
+    adxl359_vib_data_shm_name,
+    adxl359_temp_shm_name,
+    adxl359_vib_data_shape,
+    adxl359_lock,
+):
+    anomaly_history = 20
+    vib_ylim = [-4, 4]
+
+    h = adxl359_vib_data_shape[0]
+    w = adxl359_vib_data_shape[1]
 
     # adxl359 = ADXL359()  # Adjust according to your actual initialization code
     # adxl359._initialize()
@@ -58,23 +68,31 @@ def update_adxl359_vib_data_shm(adxl359_vib_data_shm_name,adxl359_temp_shm_name,
     plot1 = pg.PlotWidget(title="Vibration X Axis")
     plot2 = pg.PlotWidget(title="Vibration Y Axis")
     plot3 = pg.PlotWidget(title="Vibration Z Axis")
-    plot1.setFixedWidth(850)
-    plot1.setFixedHeight(320)
-    plot2.setFixedWidth(850)
-    plot2.setFixedHeight(320)
-    plot3.setFixedWidth(850)
-    plot3.setFixedHeight(320)
 
-    plot1_item = plot1.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='b')
-    plot2_item =plot2.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='g')
-    plot3_item =plot3.plot(np.linspace(0, 1000, 1000),np.zeros(1000).astype(np.float16), pen='r')
+    plot1.setFixedSize(w, h)
+    plot2.setFixedSize(w, h)
+    plot3.setFixedSize(w, h)
 
-    # Create the three anomaly plots
-    anomaly_score_plot1 = pg.PlotWidget(title="Anomaly Plot 1")
+    plot1.setYRange(*vib_ylim)
+    plot2.setYRange(*vib_ylim)
+    plot3.setYRange(*vib_ylim)
 
-    vib_anomaly_scores = np.zeros(20)
+    plot1_item = plot1.plot(np.arange(1000),np.zeros(1000).astype(np.float16), pen='b')
+    plot2_item = plot2.plot(np.arange(1000),np.zeros(1000).astype(np.float16), pen='g')
+    plot3_item = plot3.plot(np.arange(1000),np.zeros(1000).astype(np.float16), pen='r')
 
-    anomaly_score_plot1_item = anomaly_score_plot1.plot(np.arange(20), vib_anomaly_scores, pen='orange', name="Anomaly Score")
+    # Create the anomaly plot
+    anomaly_score_plot = pg.PlotWidget(title="Anomaly Score")
+    anomaly_score_plot.setFixedSize(w, h)
+    anomaly_score_plot.setYRange(0, 1)
+
+    vib_anomaly_scores = np.zeros(anomaly_history)
+    anomaly_score_plot1_item = anomaly_score_plot.plot(
+        np.arange(anomaly_history),
+        vib_anomaly_scores,
+        pen="orange",
+        name="Anomaly Score",
+    )
 
     # existing_shm = shared_memory.SharedMemory(name=adxl359_vib_data_shm.name)
     # shm_array = np.ndarray((1,), dtype=np.float16, buffer=adxl359_temp_shm.buf)
@@ -90,9 +108,9 @@ def update_adxl359_vib_data_shm(adxl359_vib_data_shm_name,adxl359_temp_shm_name,
         y_data = np.random.randn(1000) 
         z_data = np.random.randn(1000)
         time.sleep(1)
-        plot1_item.setData(np.linspace(0, 1000, 1000).tolist(),x_data)
-        plot2_item.setData(np.linspace(0, 1000, 1000).tolist(),y_data)
-        plot3_item.setData(np.linspace(0, 1000, 1000).tolist(),z_data)
+        plot1_item.setData(np.linspace(0, 1000, 1000).tolist(), x_data)
+        plot2_item.setData(np.linspace(0, 1000, 1000).tolist(), y_data)
+        plot3_item.setData(np.linspace(0, 1000, 1000).tolist(), z_data)
 
         # temperature_label.setText(f"Temperature: {temp:.2f} °C")
 
@@ -103,7 +121,11 @@ def update_adxl359_vib_data_shm(adxl359_vib_data_shm_name,adxl359_temp_shm_name,
         anomaly_score_plot1_item.setData(index, vib_anomaly_scores)
 
         with adxl359_lock:                                        
-            shared_adxl359_vib_data[:, :, :, 0] =pixmap_to_numpy(plot1.grab())
-            shared_adxl359_vib_data[:, :, :, 1] =pixmap_to_numpy(plot2.grab()) 
-            shared_adxl359_vib_data[:, :, :, 2] =pixmap_to_numpy(plot3.grab())
+            shared_adxl359_vib_data[:, :, :, 0] = pixmap_to_numpy(plot1.grab())
+            shared_adxl359_vib_data[:, :, :, 1] = pixmap_to_numpy(plot2.grab())
+            shared_adxl359_vib_data[:, :, :, 2] = pixmap_to_numpy(plot3.grab())
+            shared_adxl359_vib_data[:, :, :, 3] = pixmap_to_numpy(
+                anomaly_score_plot.grab()
+            )
+
             # shared_adxl359_temp_data[0] = temp_data[0]

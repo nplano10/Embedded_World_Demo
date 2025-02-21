@@ -83,23 +83,39 @@ class MainWindow(QMainWindow):
         # Set the central widget layout
         central_widget.setLayout(main_layout)
 
-        # Set up the QTimer to update the images every 2 seconds (2000ms)  # TODO: do we need to continually restart this thread
+        # Set up the QTimer to update the images at 25 fps seconds
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.start_camera_thread)
-        self.camera_timer.start(int(1000/25))  # Update every 2000ms (2 seconds)
+        self.camera_timer.start(int(1000/25))  # Update 25 times every 1000ms
 
         self.adxl359_timer= QTimer(self)
         self.adxl359_timer.timeout.connect(self.start_sensor_thread)
-        self.adxl359_timer.start(int(1000))  # Update every 2000ms (2 seconds)
+        self.adxl359_timer.start(int(1000))  # Update every 1000ms (1 second)
 
         self.adxl359_lock  = multiprocessing.Lock()
-        self.adxl359_vib_data_shape =(320,850,3,6)
-        self.adxl359_vib_data_shm = shared_memory.SharedMemory(create=True,size=np.prod(self.adxl359_vib_data_shape)* np.uint8().itemsize)
+        self.adxl359_vib_data_shape = (180,320,3,4)
+        self.adxl359_vib_data_shm = shared_memory.SharedMemory(
+            create=True, size=np.prod(self.adxl359_vib_data_shape) * np.uint8().itemsize
+        )
         self.adxl359_temp_shm = shared_memory.SharedMemory(create=True,size=np.float16().itemsize)
 
-        self.adxl359_thread = Adxl359Thread(self,self.adxl359_vib_data_shm.name,self.adxl359_temp_shm.name, self.adxl359_vib_data_shape,self.adxl359_lock)
+        self.adxl359_thread = Adxl359Thread(
+            self,
+            self.adxl359_vib_data_shm.name,
+            self.adxl359_temp_shm.name,
+            self.adxl359_vib_data_shape,
+            self.adxl359_lock,
+        )
         self.adxl359_thread.adxl359_plot_signal.connect(self.update_adxl359_feed)
-        self.sensor_processes = multiprocessing.Process(target=update_adxl359_vib_data_shm,args=(self.adxl359_vib_data_shm.name,self.adxl359_temp_shm.name, self.adxl359_vib_data_shape,self.adxl359_lock))
+        self.sensor_processes = multiprocessing.Process(
+            target=update_adxl359_vib_data_shm,
+            args=(
+                self.adxl359_vib_data_shm.name,
+                self.adxl359_temp_shm.name,
+                self.adxl359_vib_data_shape,
+                self.adxl359_lock,
+            ),
+        )
         self.sensor_processes.start()
 
         self.camera_one_lock = multiprocessing.Lock()
@@ -107,12 +123,30 @@ class MainWindow(QMainWindow):
         self.camera_shape = (480, 640, 3)
         self.camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
         self.camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
-        self.camera_thread = CameraThread(self,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock)
+        self.camera_thread = CameraThread(
+            self,
+            self.camera_one_shm.name,
+            self.camera_two_shm.name,
+            self.camera_shape,
+            self.camera_one_lock,
+            self.camera_two_lock,
+        )
 
         # # Connect the thread signals to slots in the main window
         self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
         self.terminate_event = multiprocessing.Event()
-        self.camera_processes = multiprocessing.Process(target=update_imx500_shm,args=(self.model,self.terminate_event,self.camera_one_shm.name,self.camera_two_shm.name,self.camera_shape,self.camera_one_lock,self.camera_two_lock))
+        self.camera_processes = multiprocessing.Process(
+            target=update_imx500_shm,
+            args=(
+                self.model,
+                self.terminate_event,
+                self.camera_one_shm.name,
+                self.camera_two_shm.name,
+                self.camera_shape,
+                self.camera_one_lock,
+                self.camera_two_lock,
+            ),
+        )
         self.camera_processes.start()
 
     def closeEvent(self, event):
@@ -285,14 +319,12 @@ class MainWindow(QMainWindow):
         anomaly_plot_layout = QVBoxLayout()
 
         vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 4.5)
+        # print(f"Vib graph height: {vib_height}")
+        # print(f"Vib graph width: {vib_width}")
         self.vibx_anomaly_graph = self.vibration_graph(vib_height, vib_width)
-        # self.viby_anomaly_graph = self.vibration_graph(vib_height, vib_width)
-        # self.vibz_anomaly_graph = self.vibration_graph(vib_height, vib_width)
 
         # Add the anomaly plots to the vertical layout
         anomaly_plot_layout.addWidget(self.vibx_anomaly_graph)
-        # anomaly_plot_layout.addWidget(self.viby_anomaly_graph)
-        # anomaly_plot_layout.addWidget(self.vibz_anomaly_graph)
 
         return anomaly_plot_layout
 
@@ -307,7 +339,7 @@ class MainWindow(QMainWindow):
         if self.model== selected_model:
             print("no change")
         else:
-            self.model= selected_model
+            self.model = selected_model
             if self.camera_processes.is_alive():
                 self.terminate_event.set()
                 self.camera_processes.join()
@@ -321,10 +353,10 @@ class MainWindow(QMainWindow):
                         self.camera_two_shm.name,
                         self.camera_shape,
                         self.camera_one_lock,
-                        self.camera_two_lock
-                    )
+                        self.camera_two_lock,
+                    ),
                 )
-                self.camera_processes.start()  # TODO: start this process outside the "IF"?
+            self.camera_processes.start()
 
     def exit_application(self):
 
@@ -364,7 +396,7 @@ class MainWindow(QMainWindow):
         print("exiting")
         QApplication.exit()
 
-    def start_camera_thread(self):  # TODO: this thread respawns after ctrl-c
+    def start_camera_thread(self):
         self.camera_thread.start()
         self.camera_thread.setPriority(QThread.TimeCriticalPriority)
 
@@ -379,10 +411,11 @@ class MainWindow(QMainWindow):
         self.display_image(self.camera_feed_2, camera_two)
 
     def update_adxl359_feed(self,plot_tuple):
-        vibx_graph, viby_graph,vibz_graph, temp= plot_tuple
+        vibx_graph, viby_graph, vibz_graph, vib_anom_graph = plot_tuple
         self.display_image(self.vibx_graph, vibx_graph)
         self.display_image(self.viby_graph, viby_graph)
         self.display_image(self.vibz_graph, vibz_graph)
+        self.display_image(self.vibx_anomaly_graph, vib_anom_graph)
         # self.temperature_label.setText(f"Temperature: {temp[0]:.2f} °C")
 
     def display_image(self, label, image_pixmap):
