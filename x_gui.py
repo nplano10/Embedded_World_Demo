@@ -21,7 +21,7 @@ from multiprocessing import shared_memory
 import multiprocessing
 from x_adxl_process import update_adxl359_vib_data_shm
 from x_imx500_process import Model, update_imx500_shm
-from x_imx500_gui_thread import CameraThread
+from x_imx500_gui_thread import CameraThread, CameraShm
 from x_adxl_gui_thread import Adxl359Thread
 
 
@@ -53,19 +53,19 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
 
         # Add the camera layout (camera feeds and logging windows) to top row
-        top_layout = self.camera_layout(screen_height, screen_width)
+        top_layout = self.create_camera_layout(screen_height, screen_width)
         main_layout.addLayout(top_layout)
 
         # Create the bottom row (buttons, temperature, vib plots)
         bottom_layout = QHBoxLayout()
 
         # Add the buttons, apply model controls, and temperature layout to the bottom-left of the layout
-        button_layout = self.button_layout(screen_height, screen_width)
+        button_layout = self.create_button_layout(screen_height, screen_width)
         bottom_layout.addLayout(button_layout)
         bottom_layout.addStretch(1)
 
         # Add the plot layout to the bottom row (right side)
-        vib_layout = self.vibration_layout(screen_height, screen_width)
+        vib_layout = self.create_vibration_layout(screen_height, screen_width)
         bottom_layout.addLayout(vib_layout)
         bottom_layout.addStretch(1) 
 
@@ -116,17 +116,22 @@ class MainWindow(QMainWindow):
         )
         self.sensor_processes.start()
 
-        self.camera_one_lock = multiprocessing.Lock()
-        self.camera_two_lock = multiprocessing.Lock()
-        self.camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
-        self.camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
+        # self.camera_one_lock = multiprocessing.Lock()
+        # self.camera_two_lock = multiprocessing.Lock()
+        # self.camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
+        # self.camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
+
+        self.camera_one_shm = CameraShm(self.camera_shape)
+        self.camera_two_shm = CameraShm(self.camera_shape)
         self.camera_thread = CameraThread(
             self,
-            self.camera_one_shm.name,
-            self.camera_two_shm.name,
-            self.camera_shape,
-            self.camera_one_lock,
-            self.camera_two_lock,
+            self.camera_one_shm,
+            self.camera_two_shm,
+            # self.camera_one_shm.name,
+            # self.camera_two_shm.name,
+            # self.camera_shape,
+            # self.camera_one_lock,
+            # self.camera_two_lock,
         )
 
         # Connect the thread signals to slots in the main window
@@ -137,11 +142,13 @@ class MainWindow(QMainWindow):
             args=(
                 self.model,
                 self.terminate_event,
-                self.camera_one_shm.name,
-                self.camera_two_shm.name,
-                self.camera_shape,
-                self.camera_one_lock,
-                self.camera_two_lock,
+                self.camera_one_shm,
+                self.camera_two_shm,
+                # self.camera_one_shm.shm.name,
+                # self.camera_two_shm.shm.name,
+                # self.camera_shape,
+                # self.camera_one_shm.lock,
+                # self.camera_two_shm.lock,
             ),
         )
         self.camera_processes.start()
@@ -159,7 +166,7 @@ class MainWindow(QMainWindow):
         else:
             event.ignore()  # Ignore the event, preventing the window from closing
 
-    def button_layout(self, screen_height, screen_width):
+    def create_button_layout(self, screen_height, screen_width):
         height_buttons = int(screen_height * (1 / 32))
         width_buttons = int(screen_width / 16)
 
@@ -239,7 +246,7 @@ class MainWindow(QMainWindow):
 
         return button_layout
 
-    def camera_layout(self, screen_height, screen_width):
+    def create_camera_layout(self, screen_height, screen_width):
 
         cam_layout = QHBoxLayout()
 
@@ -256,33 +263,33 @@ class MainWindow(QMainWindow):
 
         # Camera feed 1 and its logging window
         cam_1_layout = QHBoxLayout()
-        self.camera_feed_1 = self.camera_feed(
+        self.camera_feed_1 = self.create_camera_feed(
             cam_height, cam_width, title="Camera Feed 1"
         )
-        self.log_1 = self.camera_log(
+        self.camera_log_1 = self.create_camera_log(
             log_height, log_width, title="Camera 1 Logging"
         )
 
-        cam_1_layout.addWidget(self.log_1)
+        cam_1_layout.addWidget(self.camera_log_1)
         cam_1_layout.addWidget(self.camera_feed_1)
         cam_layout.addLayout(cam_1_layout)
 
         # Camera feed 2 and its logging window
         cam_2_layout = QHBoxLayout()
-        self.camera_feed_2 = self.camera_feed(
+        self.camera_feed_2 = self.create_camera_feed(
             cam_height, cam_width, title="Camera Feed 2"
         )
-        self.log_2 = self.camera_log(
+        self.camera_log_2 = self.create_camera_log(
             log_height, log_width, title="Camera 2 Logging"
         )
 
         cam_2_layout.addWidget(self.camera_feed_2)
-        cam_2_layout.addWidget(self.log_2)
+        cam_2_layout.addWidget(self.camera_log_2)
         cam_layout.addLayout(cam_2_layout)
 
         return cam_layout
 
-    def camera_feed(self, cam_height, cam_width, title="Camera Feed"):
+    def create_camera_feed(self, cam_height, cam_width, title="Camera Feed"):
         camera_feed = QLabel(self)
         camera_feed.height = cam_height
         camera_feed.width = cam_width
@@ -291,7 +298,7 @@ class MainWindow(QMainWindow):
         camera_feed.setStyleSheet("background-color: lightgray;")
         return camera_feed
 
-    def camera_log(self, log_height, log_width, title="Camera logging window"):
+    def create_camera_log(self, log_height, log_width, title="Camera logging window"):
         camera_log = QTextEdit(self)
         camera_log.setPlaceholderText(title)
         camera_log.setReadOnly(True)
@@ -301,17 +308,17 @@ class MainWindow(QMainWindow):
         camera_log.setStyleSheet("background-color: black; color: white;")
         return camera_log
 
-    def vibration_layout(self, screen_height, screen_width):
+    def create_vibration_layout(self, screen_height, screen_width):
         vib_layout = QHBoxLayout()
 
         vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 4.5)
         print(f"Vib graph height: {vib_height}")
         print(f"Vib graph width: {vib_width}")
 
-        self.vibx_graph = self.vibration_graph(vib_height, vib_width)
-        self.viby_graph = self.vibration_graph(vib_height, vib_width)
-        self.vibz_graph = self.vibration_graph(vib_height, vib_width)
-        self.vibx_anomaly_graph = self.vibration_graph(vib_height, vib_width)
+        self.vibx_graph = self.create_vibration_graph(vib_height, vib_width)
+        self.viby_graph = self.create_vibration_graph(vib_height, vib_width)
+        self.vibz_graph = self.create_vibration_graph(vib_height, vib_width)
+        self.vibx_anomaly_graph = self.create_vibration_graph(vib_height, vib_width)
 
         # Add the plots to the horizontal layout
         vib_layout.addWidget(self.vibx_graph)
@@ -320,7 +327,7 @@ class MainWindow(QMainWindow):
         vib_layout.addWidget(self.vibx_anomaly_graph)
         return vib_layout
 
-    def vibration_graph(self, vib_height, vib_width):
+    def create_vibration_graph(self, vib_height, vib_width):
         vib_graph = QLabel(self)
         vib_graph.height = vib_height
         vib_graph.width = vib_width
@@ -347,11 +354,13 @@ class MainWindow(QMainWindow):
                     args=(
                         self.model,
                         self.terminate_event,
-                        self.camera_one_shm.name,
-                        self.camera_two_shm.name,
-                        self.camera_shape,
-                        self.camera_one_lock,
-                        self.camera_two_lock,
+                        self.camera_one_shm,
+                        self.camera_two_shm,
+                        # self.camera_one_shm.shm.name,
+                        # self.camera_two_shm.shm.name,
+                        # self.camera_shape,
+                        # self.camera_one_shm.lock,
+                        # self.camera_two_shm.lock,
                     ),
                 )
             self.camera_processes.start()
@@ -379,13 +388,13 @@ class MainWindow(QMainWindow):
             print("child is done")
 
         print("Cleaning mem")
-        self.camera_one_shm.close()  # Detach from the shared memory
-        self.camera_one_shm.unlink()  # Deallocate the shared memory
+        self.camera_one_shm.shm.close()  # Detach from the shared memory
+        self.camera_one_shm.shm.unlink()  # Deallocate the shared memory
         self.adxl359_temp_shm.close()
         self.adxl359_temp_shm.unlink()
 
-        self.camera_two_shm.close()  # Detach from the shared memory
-        self.camera_two_shm.unlink()  # Deallocate the shared memory
+        self.camera_two_shm.shm.close()  # Detach from the shared memory
+        self.camera_two_shm.shm.unlink()  # Deallocate the shared memory
 
         self.adxl359_vib_data_shm.close()  # Detach from the shared memory
         self.adxl359_vib_data_shm.unlink()  # Deallocate the shared memory
@@ -408,6 +417,11 @@ class MainWindow(QMainWindow):
         self.display_image(self.camera_feed_1, camera_one)
         self.display_image(self.camera_feed_2, camera_two)
 
+    def update_camera_log(self, camera_log_data_tuple):
+        log_one, log_two = camera_log_data_tuple
+        self.print_log(self.camera_log_1, log_one)
+        self.print_log(self.camera_log_2, log_two)
+
     def update_adxl359_feed(self,plot_tuple):
         vibx_graph, viby_graph, vibz_graph, vib_anom_graph = plot_tuple
         self.display_image(self.vibx_graph, vibx_graph)
@@ -416,5 +430,8 @@ class MainWindow(QMainWindow):
         self.display_image(self.vibx_anomaly_graph, vib_anom_graph)
         # self.temperature_label.setText(f"Temperature: {temp[0]:.2f} °C")
 
-    def display_image(self, label, image_pixmap):
+    def display_image(self, label: QLabel, image_pixmap):
         label.setPixmap(image_pixmap.scaled(label.width,label.height))
+
+    def print_log(self, textbox: QTextEdit, log_info):
+        textbox.append(log_info)
