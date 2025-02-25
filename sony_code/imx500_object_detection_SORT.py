@@ -60,7 +60,7 @@ class IMX500Detector:
         self.pixels_per_mm = args.pixels_per_mm  # Conversion factor
         self.detection_region = args.detection_region
 
-        self.last_results = None
+        self.last_results: None | List[Detection] = None
         # Track processed IDs
         self.processed_ids: Set[int] = set()
         self.anomaly_results = {}

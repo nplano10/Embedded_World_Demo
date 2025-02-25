@@ -128,6 +128,7 @@ class MainWindow(QMainWindow):
 
         # Connect the thread signals to slots in the main window
         self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
+        self.camera_thread.log_feed_signal.connect(self.update_camera_log)
         self.terminate_event = multiprocessing.Event()
         self.camera_processes = multiprocessing.Process(
             target=update_imx500_shm,

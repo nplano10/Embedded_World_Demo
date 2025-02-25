@@ -4,8 +4,7 @@ from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
 # from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QPushButton, QDesktopWidget,QHBoxLayout,QComboBox,QTextEdit
 
-from dataclasses import dataclass
-from multiprocessing import shared_memory, Lock
+from multiprocessing import shared_memory
 # from picamera2 import Picamera2
 # from  adxl359  import ADXL359
 # from io import BytesIO
@@ -22,41 +21,28 @@ import copy
 # import sony_code.imx500_object_detection_demo as ob_det
 # from enum import Enum
 # import json
+from x_imx500_process import DET_LABEL, CameraShm
 
 
-@dataclass
-class CameraShm:
-    im_shape: list[int]
-    alg_shape: list[int]
-
-    def __post_init__(self):
-        # Create shared memory and lock for camera image
-        self.im_shm = shared_memory.SharedMemory(
-            create=True, size=np.prod(self.im_shape) * np.uint8().itemsize
-        )
-        self.im_lock = Lock()
-
-        # Create shared memory and lock for algorithm output
-        self.alg_shm = shared_memory.SharedMemory(
-            create=True, size=np.prod(self.im_shape) * np.float16().itemsize
-        )
-        self.alg_lock = Lock()
 
 class CameraThread(QThread):
     # Define a signal to send data to the main thread
     camera_feed_signal = pyqtSignal(tuple)
+    log_feed_signal = pyqtSignal(tuple)
 
     def __init__(
         self,
         parent,
         det_camera_shm: CameraShm,
         anom_camera_shm: CameraShm,
+        det_fn = DET_LABEL,
     ):
         super().__init__(parent)  # Make sure to call the base class's constructor
         self.previous_camera_det = None
         self.previous_camera_anom = None
         self.det_camera_shm = det_camera_shm
         self.anom_camera_shm = anom_camera_shm
+        self.det_labels = self.parse_det_labels(det_fn)
         
     def numpy_arrray_to_pixmap(self,numpy_array):
         height, width, _ = numpy_array.shape
@@ -80,7 +66,12 @@ class CameraThread(QThread):
             self.camera_feed_signal.emit((self.numpy_arrray_to_pixmap(camera_image_det), self.numpy_arrray_to_pixmap(camera_image_anom)))
 
         # Process output from algorithms for log information
-        # TODO SUE
+        det_results = self.readAlgResults(self.det_camera_shm)
+        anom_results = self.readAlgResults(self.anom_camera_shm)
+
+        det_log = self.det_results_to_string(det_results)
+        anom_log = self.anom_results_to_string(anom_results)
+        self.log_feed_signal.emit((det_log, anom_log))  # TODO SUE
 
     @staticmethod
     def readCameraImageShm(camera_shm: CameraShm):
@@ -92,3 +83,50 @@ class CameraThread(QThread):
             camera_image = copy.deepcopy(image)
 
         return camera_image
+
+    @staticmethod
+    def readAlgResults(camera_shm: CameraShm):
+        with camera_shm.alg_lock:
+            shm = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
+            results = np.ndarray(
+                camera_shm.alg_shape, dtype=np.float16, buffer=shm.buf
+            )
+            alg_results = copy.deepcopy(results)
+
+            # clear the shm
+            results[:] = 0.
+
+        # crop the bottom part of the array
+        to_remove = np.all(alg_results == 0, axis=1)
+        alg_results = alg_results[~to_remove, :]
+
+        return alg_results
+
+    def det_results_to_string(self, det_results):
+
+        output_str = ""
+        for row in det_results:
+
+            # buffer is category, confidence, tracking_id
+            cat = row[0]
+            class_name = self.det_labels[int(row[0])]
+            if class_name == "smarties":
+                curr_str = f'TrackID {row[2]}: <font color="blue">{class_name}</font>, confidence = {row[1]}\n'
+            else:
+                curr_str = f'TrackID {row[2]}: <font color="red">{class_name}</font>, confidence = {row[1]}\n'
+
+            output_str += curr_str
+
+        return output_str  # Sue TODO
+
+    def anom_results_to_string(self, anom_results):
+        # return output_str
+        pass  # Sue TODO
+
+    @staticmethod
+    def parse_det_labels(label_fn):
+        # create a list containing class per category
+        with open(label_fn, 'r') as f:
+            labels = f.read().splitlines()
+
+        return labels

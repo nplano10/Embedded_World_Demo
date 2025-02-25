@@ -1,0 +1,4 @@
+filterpy
+scikit-image
+pyqtgraph
+matplotlib

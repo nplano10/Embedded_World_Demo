@@ -10,8 +10,30 @@ from sony_code.imx500_no_model import IMX500NoModel
 import sony_code.imx500_object_detection_demo as ob_det
 import time
 from enum import Enum
-from x_imx500_gui_thread import CameraShm
+from multiprocessing import shared_memory, Lock
+from dataclasses import dataclass
 
+DET_MODEL = "sony_code/Models/detection-imx500-newlight/network.rpk"
+DET_LABEL = "sony_code/Models/detection-imx500-newlight/labels.txt"
+ANOM_MODEL = "sony_code/Models/anomaly-imx500-newlight/network.rpk"
+
+@dataclass
+class CameraShm:
+    im_shape: list[int]
+    alg_shape: list[int]
+
+    def __post_init__(self):
+        # Create shared memory and lock for camera image
+        self.im_shm = shared_memory.SharedMemory(
+            create=True, size=np.prod(self.im_shape) * np.uint8().itemsize
+        )
+        self.im_lock = Lock()
+
+        # Create shared memory and lock for algorithm output
+        self.alg_shm = shared_memory.SharedMemory(
+            create=True, size=np.prod(self.im_shape) * np.float16().itemsize
+        )
+        self.alg_lock = Lock()
 
 class Model(Enum):
     NOMODEL = 1
@@ -62,7 +84,7 @@ def detection_process(event, bbox_queue, results_queue, args, camera_shm: Camera
     results = np.ndarray(camera_shm.alg_shape, dtype=np.float16, buffer=alg_shm.buf)
 
     while not event.is_set():
-        time.sleep(1/args.fps)  # TODO: running at 20 fps or 30?
+        time.sleep(1/args.fps)
 
         # Postprocess the results
         metadata = detector.picam2.capture_metadata()
@@ -71,24 +93,22 @@ def detection_process(event, bbox_queue, results_queue, args, camera_shm: Camera
         )
         detector.update_bbox_queue(bbox_queue)
 
-        with camera_shm.im_lock:  # Ensure exclusive access to the shared memory
+        with camera_shm.im_lock:
+            # Update image in shared memory
             image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
         with camera_shm.alg_lock:
-            # clear contents from the shared memory
+            # Update detection results in shared memory
             num_results = len(detector.last_results)
             for ind, detection in enumerate(detector.last_results):
 
                 curr_results = [
                     detection.category,
-                    detection.conf
-                ]
+                    detection.conf,
+                    detection.tracking_id,
+                ]  # TODO SUE
 
-                # results[ind, :] = curr_results
-
-            results[num_results:, :] = np.nan
-
-            pass  # TODO: sue
+                results[ind, :] = np.array(curr_results, dtype=np.float16)
 
 
 def no_model_process(
@@ -159,8 +179,8 @@ def update_imx500_shm(
     results_queue = Queue()  # Queue for receiving classification results
 
     pill_detection_args = argparse.Namespace(
-        model="sony_code/Models/detection-imx500-newlight/network.rpk", 
-        labels="sony_code/Models/detection-imx500-newlight/labels.txt",
+        model=DET_MODEL,
+        labels=DET_LABEL,
         camera_index=0,
         fps=25,
         max_disappeared=20,
@@ -171,7 +191,7 @@ def update_imx500_shm(
         detection_region=DETECTION_REGION
     )
     anomaly_detection_args = argparse.Namespace(
-        model="sony_code/Models/anomaly-imx500-newlight/network.rpk",
+        model=ANOM_MODEL,
         camera_index=1,
         fps=20,
         image_threshold=0.435,
