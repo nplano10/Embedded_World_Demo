@@ -1,0 +1,18 @@
+
+
+runnig 
+cd /home/nplano/projects/Embedded_World_Demo
+source env/bin/activate
+python x_app.py
+
+
+sudo dtoverlay imx500-pi5, cam0=1
+sudo dtoverlay imx500-pi5
+cd /home/nplano/projects/Embedded_World_Demo/SER_DES_Setup
+python setup_gmsl.py
+sudo reboot
+
+
+
+
+
