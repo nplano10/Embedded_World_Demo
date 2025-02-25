@@ -84,7 +84,7 @@ def detection_process(event, bbox_queue, results_queue, args, camera_shm: Camera
                     detection.conf
                 ]
 
-                results[ind, :] = curr_results
+                # results[ind, :] = curr_results
 
             results[num_results:, :] = np.nan
 
@@ -151,7 +151,7 @@ def update_imx500_shm(
 ):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
-    CAMERA_DISTANCE_PIXELS = -122  # Distance in pixels
+    CAMERA_DISTANCE_PIXELS = 150  # Distance in pixels
     PIXELS_PER_MM = CAMERA_DISTANCE_PIXELS / CAMERA_DISTANCE_MM
     DETECTION_REGION = [20, 70, 600, 410]
 
@@ -159,8 +159,8 @@ def update_imx500_shm(
     results_queue = Queue()  # Queue for receiving classification results
 
     pill_detection_args = argparse.Namespace(
-        model="sony_code/Models/detection-imx500/network.rpk", 
-        labels="sony_code/Models/detection-imx500/labels.txt",
+        model="sony_code/Models/detection-imx500-newlight/network.rpk", 
+        labels="sony_code/Models/detection-imx500-newlight/labels.txt",
         camera_index=0,
         fps=30,
         max_disappeared=20,
@@ -171,7 +171,7 @@ def update_imx500_shm(
         detection_region=DETECTION_REGION
     )
     anomaly_detection_args = argparse.Namespace(
-        model="sony_code/Models/anomaly-imx500/network.rpk",
+        model="sony_code/Models/anomaly-imx500-newlight/network.rpk",
         camera_index=1,
         fps=20,
         image_threshold=0.50,
