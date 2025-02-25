@@ -151,9 +151,9 @@ def update_imx500_shm(
 ):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
-    CAMERA_DISTANCE_PIXELS = -122  # Distance in pixels
+    CAMERA_DISTANCE_PIXELS = -160  # Distance in pixels
     PIXELS_PER_MM = CAMERA_DISTANCE_PIXELS / CAMERA_DISTANCE_MM
-    DETECTION_REGION = [20, 70, 600, 410]
+    DETECTION_REGION = [20, 0, 600, 410]  # x, y, w, h
 
     bbox_queue = Queue(maxsize=50)  # Queue for passing bounding boxes
     results_queue = Queue()  # Queue for receiving classification results
@@ -174,7 +174,7 @@ def update_imx500_shm(
         model="sony_code/Models/anomaly-imx500-newlight/network.rpk",
         camera_index=1,
         fps=20,
-        image_threshold=0.45,
+        image_threshold=0.435,
         pixel_threshold=0.30,
         constant_offset_in_pixel=CAMERA_DISTANCE_PIXELS,
         roi_box_size=90,
