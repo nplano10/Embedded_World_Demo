@@ -64,7 +64,7 @@ def detection_process(event, bbox_queue, results_queue, args, camera_shm: Camera
     while not event.is_set():
         time.sleep(1/args.fps)  # TODO: running at 20 fps or 30?
 
-        # Run the algorithm, process the image
+        # Postprocess the results
         metadata = detector.picam2.capture_metadata()
         detector.last_results = detector.parse_detections(
             metadata, args.iou, args.max_detections, args.threshold
@@ -151,7 +151,7 @@ def update_imx500_shm(
 ):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
-    CAMERA_DISTANCE_PIXELS = 150  # Distance in pixels
+    CAMERA_DISTANCE_PIXELS = -122  # Distance in pixels
     PIXELS_PER_MM = CAMERA_DISTANCE_PIXELS / CAMERA_DISTANCE_MM
     DETECTION_REGION = [20, 70, 600, 410]
 
@@ -162,7 +162,7 @@ def update_imx500_shm(
         model="sony_code/Models/detection-imx500-newlight/network.rpk", 
         labels="sony_code/Models/detection-imx500-newlight/labels.txt",
         camera_index=0,
-        fps=30,
+        fps=25,
         max_disappeared=20,
         iou=0.65,
         threshold=0.5,
@@ -174,10 +174,10 @@ def update_imx500_shm(
         model="sony_code/Models/anomaly-imx500-newlight/network.rpk",
         camera_index=1,
         fps=20,
-        image_threshold=0.50,
+        image_threshold=0.45,
         pixel_threshold=0.30,
         constant_offset_in_pixel=CAMERA_DISTANCE_PIXELS,
-        roi_box_size=128,
+        roi_box_size=90,
         pixels_per_mm=PIXELS_PER_MM
     )
 

@@ -195,7 +195,7 @@ class IMX500AnomalyDetector:
                     results_queue.put(result_dict)
                     self.draw_anomaly_results(request, results)
                     self.processed_bbox_ids.add(roi_state.bbox_id)
-                    print(f"Added to results_queue: {result_dict}")
+                    print(f"Anom: Added to results_queue: {result_dict}")
                 
                 del self.roi_settings[result_frame]
             

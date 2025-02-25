@@ -333,18 +333,21 @@ class MainWindow(QMainWindow):
         else:
             self.model = selected_model
             if self.camera_processes.is_alive():
+                # Terminate existing process
                 self.terminate_event.set()
                 self.camera_processes.join()
-                self.terminate_event = multiprocessing.Event()
-                self.camera_processes = multiprocessing.Process(
-                    target=update_imx500_shm,
-                    args=(
-                        self.model,
-                        self.terminate_event,
-                        self.det_camera_shm,
-                        self.anom_camera_shm,
-                    ),
-                )
+
+            # Start new process
+            self.terminate_event = multiprocessing.Event()
+            self.camera_processes = multiprocessing.Process(
+                target=update_imx500_shm,
+                args=(
+                    self.model,
+                    self.terminate_event,
+                    self.det_camera_shm,
+                    self.anom_camera_shm,
+                ),
+            )
             self.camera_processes.start()
 
     def exit_application(self):

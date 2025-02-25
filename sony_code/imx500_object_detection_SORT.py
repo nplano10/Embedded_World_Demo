@@ -25,6 +25,7 @@ from picamera2 import MappedArray, Picamera2
 from picamera2.devices import IMX500
 from picamera2.devices.imx500 import (NetworkIntrinsics,
                                     postprocess_nanodet_detection)
+from multiprocessing import Process, Queue
 import json
 @dataclass
 class Detection:
@@ -293,7 +294,7 @@ class IMX500Detector:
                 cv2.rectangle(m.array, (b_x, b_y),
                             (b_x + b_w, b_y + b_h), (255, 0, 0, 0))
 
-    def update_bbox_queue(self, bbox_queue) -> None:
+    def update_bbox_queue(self, bbox_queue: Queue) -> None:
         if not self.last_results:
             return
         
@@ -312,5 +313,7 @@ class IMX500Detector:
                 }
                 bbox_queue.put(bbox_data)
                 self.processed_ids.add(detection.tracking_id)
-                print(f"Added to bbox_queue: {bbox_data}")
+                print(f"ObjDet: Added to bbox_queue: {bbox_data}")
+            elif bbox_queue.full():
+                print(f"ObjDet: bbox_queue is full with {bbox_queue.qsize()} items. Not adding track ID {detection.tracking_id}")
 
