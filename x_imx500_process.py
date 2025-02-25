@@ -3,7 +3,7 @@ from multiprocessing import shared_memory
 from picamera2 import Picamera2
 import argparse
 from multiprocessing import Process, Queue
-from sony_code.imx500_object_detection_SORT import IMX500Detector
+from sony_code.imx500_object_detection_SORT import IMX500Detector, Detection
 from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
 from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
 from sony_code.imx500_no_model import IMX500NoModel
@@ -30,36 +30,65 @@ def anomaly_process(
     detector.picam2.pre_callback = lambda req: detector.process_frame(
         req, bbox_queue, results_queue)
     print("Done loading model")
-    two_shm = shared_memory.SharedMemory(name=camera_shm.shm.name)
-    two_image = np.ndarray(camera_shm.shape, dtype=np.uint8, buffer=two_shm.buf)
+
+    # Attach to shared memory block
+    im_shm = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
+    image = np.ndarray(camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf)
+
+    alg_shm = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
+    results = np.ndarray(camera_shm.alg_shape, dtype=np.float16, buffer=alg_shm.buf)
 
     while not event.is_set():
         time.sleep(1/args.fps)  # TODO: running at 20 fps or 30?
-        with camera_shm.lock:
-            two_image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
+        with camera_shm.im_lock:
+            image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
+        with camera_shm.alg_lock:
+            # update anomaly information
+            pass  # TODO SUE
 
-def detection_process(event,bbox_queue, results_queue, args,camera_shm: CameraShm):
+def detection_process(event, bbox_queue, results_queue, args, camera_shm: CameraShm):
 
     detector = IMX500Detector(args)
     detector.picam2.pre_callback = lambda req: detector.draw_detections(req, results_queue)
-    one_shm = shared_memory.SharedMemory(name=camera_shm.shm.name)
-    one_image = np.ndarray(
-        camera_shm.shape, dtype=np.uint8, buffer=one_shm.buf
+
+    # Attach to shared memory block
+    im_shm = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
+    image = np.ndarray(
+        camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf
     )
+
+    alg_shm = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
+    results = np.ndarray(camera_shm.alg_shape, dtype=np.float16, buffer=alg_shm.buf)
+
     while not event.is_set():
         time.sleep(1/args.fps)  # TODO: running at 20 fps or 30?
-        with camera_shm.lock:  # Ensure exclusive access to the shared memory
-            metadata = detector.picam2.capture_metadata()
-            detector.last_results = detector.parse_detections(
-                metadata,
-                args.iou,
-                args.max_detections,
-                args.threshold
-            )
 
-            detector.update_bbox_queue(bbox_queue)
-            one_image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
+        # Run the algorithm, process the image
+        metadata = detector.picam2.capture_metadata()
+        detector.last_results = detector.parse_detections(
+            metadata, args.iou, args.max_detections, args.threshold
+        )
+        detector.update_bbox_queue(bbox_queue)
+
+        with camera_shm.im_lock:  # Ensure exclusive access to the shared memory
+            image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
+
+        with camera_shm.alg_lock:
+            # clear contents from the shared memory
+            num_results = len(detector.last_results)
+            for ind, detection in enumerate(detector.last_results):
+
+                curr_results = [
+                    detection.category,
+                    detection.conf
+                ]
+
+                results[ind, :] = curr_results
+
+            results[num_results:, :] = np.nan
+
+            pass  # TODO: sue
 
 
 def no_model_process(
@@ -70,16 +99,16 @@ def no_model_process(
 
     imx500_1 = IMX500NoModel(0)
     imx500_2 = IMX500NoModel(1)
-    one_shm = shared_memory.SharedMemory(name=camera_one_shm.shm.name)
-    one_image = np.ndarray(camera_one_shm.shape, dtype=np.uint8, buffer=one_shm.buf)
-    two_shm = shared_memory.SharedMemory(name=camera_two_shm.shm.name)
-    two_image = np.ndarray(camera_two_shm.shape, dtype=np.uint8, buffer=two_shm.buf)
+    one_shm = shared_memory.SharedMemory(name=camera_one_shm.im_shm.name)
+    one_image = np.ndarray(camera_one_shm.im_shape, dtype=np.uint8, buffer=one_shm.buf)
+    two_shm = shared_memory.SharedMemory(name=camera_two_shm.im_shm.name)
+    two_image = np.ndarray(camera_two_shm.im_shape, dtype=np.uint8, buffer=two_shm.buf)
 
     while not event.is_set():
         time.sleep(1/30)  # TODO: running at 20 fps or 30?
-        with camera_one_shm.lock:  
+        with camera_one_shm.im_lock:
             one_image[:] = imx500_1.picam2.capture_array().astype(np.uint8)[:, :, :3]
-        with camera_two_shm.lock:
+        with camera_two_shm.im_lock:
             two_image[:] =imx500_2.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
 
@@ -117,8 +146,8 @@ def no_model_process(
 def update_imx500_shm(
     selected_model,
     event,
-    camera_one_shm: CameraShm,
-    camera_two_shm: CameraShm,
+    det_camera_shm: CameraShm,
+    anom_camera_shm: CameraShm,
 ):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
@@ -159,7 +188,7 @@ def update_imx500_shm(
             bbox_queue,
             results_queue,
             pill_detection_args,
-            camera_one_shm,
+            det_camera_shm,
         ),
     )
     anomaly_detection_proc = Process(
@@ -169,7 +198,7 @@ def update_imx500_shm(
             bbox_queue,
             results_queue,
             anomaly_detection_args,
-            camera_two_shm,
+            anom_camera_shm,
         ),
     )
 
@@ -180,4 +209,4 @@ def update_imx500_shm(
         anomaly_detection_proc.join()
 
     if selected_model == Model.NOMODEL:
-        no_model_process(event, camera_one_shm, camera_two_shm)
+        no_model_process(event, det_camera_shm, anom_camera_shm)

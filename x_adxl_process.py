@@ -96,7 +96,6 @@ def update_adxl359_vib_data_shm(
     index = np.arange(anomaly_history)
 
     pen = pg.mkPen(color="orange", style=Qt.DashLine)
-    print(np.full((anomaly_history), anomaly_threshold))
     _ = anomaly_score_plot.plot(
         [index[0], index[-1]],
         [anomaly_threshold, anomaly_threshold],

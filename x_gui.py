@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     # QComboBox,
     QTextEdit,
-    QButtonGroup,
+    # QButtonGroup,
     QRadioButton,
     QMessageBox,
     QFrame,
@@ -30,6 +30,8 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.camera_shape = (480, 640, 3)
+        self.anom_log_shape = (100, 3)
+        self.det_log_shape = (100, 3)
         self.adxl359_sample_rate = 1000
         self.adxl359_sample_length = 1000
 
@@ -116,22 +118,12 @@ class MainWindow(QMainWindow):
         )
         self.sensor_processes.start()
 
-        # self.camera_one_lock = multiprocessing.Lock()
-        # self.camera_two_lock = multiprocessing.Lock()
-        # self.camera_one_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
-        # self.camera_two_shm = shared_memory.SharedMemory(create=True, size=np.prod(self.camera_shape) * np.uint8().itemsize)
-
-        self.camera_one_shm = CameraShm(self.camera_shape)
-        self.camera_two_shm = CameraShm(self.camera_shape)
+        self.det_camera_shm = CameraShm(self.camera_shape, self.det_log_shape)
+        self.anom_camera_shm = CameraShm(self.camera_shape, self.anom_log_shape)
         self.camera_thread = CameraThread(
             self,
-            self.camera_one_shm,
-            self.camera_two_shm,
-            # self.camera_one_shm.name,
-            # self.camera_two_shm.name,
-            # self.camera_shape,
-            # self.camera_one_lock,
-            # self.camera_two_lock,
+            self.det_camera_shm,
+            self.anom_camera_shm,
         )
 
         # Connect the thread signals to slots in the main window
@@ -142,13 +134,8 @@ class MainWindow(QMainWindow):
             args=(
                 self.model,
                 self.terminate_event,
-                self.camera_one_shm,
-                self.camera_two_shm,
-                # self.camera_one_shm.shm.name,
-                # self.camera_two_shm.shm.name,
-                # self.camera_shape,
-                # self.camera_one_shm.lock,
-                # self.camera_two_shm.lock,
+                self.det_camera_shm,
+                self.anom_camera_shm,
             ),
         )
         self.camera_processes.start()
@@ -312,8 +299,8 @@ class MainWindow(QMainWindow):
         vib_layout = QHBoxLayout()
 
         vib_height, vib_width = int(screen_height * (2 / 9)), int(screen_width / 4.5)
-        print(f"Vib graph height: {vib_height}")
-        print(f"Vib graph width: {vib_width}")
+        # print(f"Vib graph height: {vib_height}")
+        # print(f"Vib graph width: {vib_width}")
 
         self.vibx_graph = self.create_vibration_graph(vib_height, vib_width)
         self.viby_graph = self.create_vibration_graph(vib_height, vib_width)
@@ -354,13 +341,8 @@ class MainWindow(QMainWindow):
                     args=(
                         self.model,
                         self.terminate_event,
-                        self.camera_one_shm,
-                        self.camera_two_shm,
-                        # self.camera_one_shm.shm.name,
-                        # self.camera_two_shm.shm.name,
-                        # self.camera_shape,
-                        # self.camera_one_shm.lock,
-                        # self.camera_two_shm.lock,
+                        self.det_camera_shm,
+                        self.anom_camera_shm,
                     ),
                 )
             self.camera_processes.start()
@@ -388,13 +370,18 @@ class MainWindow(QMainWindow):
             print("child is done")
 
         print("Cleaning mem")
-        self.camera_one_shm.shm.close()  # Detach from the shared memory
-        self.camera_one_shm.shm.unlink()  # Deallocate the shared memory
+        self.det_camera_shm.im_shm.close()  # Detach from the shared memory
+        self.det_camera_shm.im_shm.unlink()  # Deallocate the shared memory
+        self.det_camera_shm.alg_shm.close()
+        self.det_camera_shm.alg_shm.unlink()
+
         self.adxl359_temp_shm.close()
         self.adxl359_temp_shm.unlink()
 
-        self.camera_two_shm.shm.close()  # Detach from the shared memory
-        self.camera_two_shm.shm.unlink()  # Deallocate the shared memory
+        self.anom_camera_shm.im_shm.close()  # Detach from the shared memory
+        self.anom_camera_shm.im_shm.unlink()  # Deallocate the shared memory
+        self.anom_camera_shm.alg_shm.close()
+        self.anom_camera_shm.alg_shm.unlink()
 
         self.adxl359_vib_data_shm.close()  # Detach from the shared memory
         self.adxl359_vib_data_shm.unlink()  # Deallocate the shared memory
@@ -413,11 +400,12 @@ class MainWindow(QMainWindow):
 
     def update_camera_feed(self,camera_data_tuple):
 
-        camera_one, camera_two = camera_data_tuple
-        self.display_image(self.camera_feed_1, camera_one)
-        self.display_image(self.camera_feed_2, camera_two)
+        det_camera, anom_camera = camera_data_tuple
+        self.display_image(self.camera_feed_1, det_camera)
+        self.display_image(self.camera_feed_2, anom_camera)
 
     def update_camera_log(self, camera_log_data_tuple):
+        # TODO SUE
         log_one, log_two = camera_log_data_tuple
         self.print_log(self.camera_log_1, log_one)
         self.print_log(self.camera_log_2, log_two)
