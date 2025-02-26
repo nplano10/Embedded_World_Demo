@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from picamera2 import CompletedRequest, MappedArray, Picamera2
 from picamera2.devices import IMX500
 import json
+from multiprocessing import shared_memory
+from x_utils import CameraShm
+
 @dataclass
 class AnomalyResult:
     bbox_id: int
@@ -77,9 +80,9 @@ class IMX500AnomalyDetector:
         self.set_camera_config("camera_settings.json")
 
     def set_camera_config(self,json_file):
-            with open(json_file, 'r') as file:
-                config = json.load(file)
-            self.picam2.set_controls(config["controls"])
+        with open(json_file, 'r') as file:
+            config = json.load(file)
+        self.picam2.set_controls(config["controls"])
 
     def scale_bbox_to_detection(self, detection_bbox: Tuple[int, int, int, int, float, int],
                               scale_x: float, scale_y: float) -> Tuple[int, int, int, int]:
@@ -137,13 +140,13 @@ class IMX500AnomalyDetector:
             result_text = "Anomaly" if results.image_score > self.image_threshold else "Normal"
             score_text = f"Score: {results.image_score:.3f}"
             bbox_text = f"BBox ID: {results.bbox_id}"
-            
-            cv2.putText(m.array, result_text, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv2.putText(m.array, score_text, (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv2.putText(m.array, bbox_text, (10, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+            cv2.putText(m.array, result_text, (10, 35),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            cv2.putText(m.array, score_text, (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            cv2.putText(m.array, bbox_text, (10, 65),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
             # Mask
             resized_mask = cv2.resize(results.mask, (b_w, b_h), 
@@ -168,10 +171,10 @@ class IMX500AnomalyDetector:
     def draw_frame_number(self, request: CompletedRequest, stream: str = "main") -> None:
         with MappedArray(request, stream) as m:
             frame_text = f"Frame: {self.frame_count}"
-            cv2.putText(m.array, frame_text, (10, 120),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)  # Green color
-    
-    def process_frame(self, request: CompletedRequest, bbox_queue, results_queue) -> None:
+            cv2.putText(m.array, frame_text, (10, 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)  # Green color
+
+    def process_frame(self, request: CompletedRequest, bbox_queue, results_queue, camera_shm: CameraShm) -> None:
         """
         Process each frame:
         1. Set new ROI from bbox_queue (if available)
@@ -196,14 +199,29 @@ class IMX500AnomalyDetector:
                     self.draw_anomaly_results(request, results)
                     self.processed_bbox_ids.add(roi_state.bbox_id)
                     print(f"Anom: Added to results_queue: {result_dict}")
-                
+
+                    # Write to shared memory for GUI
+                    alg_shm = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
+                    results = np.ndarray(
+                        camera_shm.alg_shape, dtype=np.float16, buffer=alg_shm.buf
+                    )
+                    with camera_shm.alg_lock:
+                        # append to existing information in shm
+                        used_row_ind = int(results[0, 0])
+                        results[used_row_ind + 1, :] = [
+                            result_dict["id"],
+                            result_dict["is_anomaly"],
+                            result_dict["anomaly_score"],
+                        ]
+                        results[0, 0] += 1  # update the last used row
+
                 del self.roi_settings[result_frame]
-            
+
             # set ROI
             if not bbox_queue.empty():
                 bbox = bbox_queue.get()
                 bbox_id = bbox["id"]
-                
+
                 if bbox_id not in self.processed_bbox_ids:
                     scaled_bbox = self.scale_bbox_to_detection(
                         (bbox['x'], bbox['y'], bbox['w'], bbox['h'],
@@ -212,7 +230,7 @@ class IMX500AnomalyDetector:
                         scale_y=6.3333
                     )
                     self.imx500.set_inference_roi_abs(scaled_bbox)
-                    
+
                     self.roi_settings[self.frame_count] = ROIState(
                         bbox_id=bbox_id,
                         roi=scaled_bbox,

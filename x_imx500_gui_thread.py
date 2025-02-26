@@ -21,8 +21,14 @@ import copy
 # import sony_code.imx500_object_detection_demo as ob_det
 # from enum import Enum
 # import json
-from x_imx500_process import DET_LABEL, CameraShm
+from x_imx500_process import DET_LABEL
+from x_utils import CameraShm
 
+
+COLORS = [
+    "red",
+    "royalblue"
+]
 
 class CameraThread(QThread):
     # Define a signal to send data to the main thread
@@ -71,7 +77,7 @@ class CameraThread(QThread):
         if det_results.shape[0] > 0 or anom_results.shape[0] > 0:
             det_log = self.det_results_to_string(det_results)
             anom_log = self.anom_results_to_string(anom_results)
-            self.log_feed_signal.emit((det_log, anom_log))  # SUE DONE
+            self.log_feed_signal.emit((det_log, anom_log))
 
     @staticmethod
     def readCameraImageShm(camera_shm: CameraShm):
@@ -111,22 +117,29 @@ class CameraThread(QThread):
         for row in det_results:
 
             # buffer is tracking_id, category, confidence
-            class_name = self.det_labels[int(row[1])]
+            cat = int(row[1])
+            class_name = self.det_labels[cat]
+            curr_str = f"ID {int(row[0])}: <b style='color: {COLORS[cat]};'>{class_name}</b>, conf = {row[2]:.3f}<br>"
 
-            curr_str = f'TrackID {row[0]}: '
-            if class_name == "smarties":
-                curr_str += f'<font color="blue">{class_name}</font>'
-            else:
-                curr_str += f'<font color="red">{class_name}</font>'
-            curr_str += f", conf = {row[2]:.3f}"
+            output_str += curr_str
 
-            output_str += curr_str + "\n"
-
-        return output_str  # Sue DONE
+        return output_str
 
     def anom_results_to_string(self, anom_results):
-        # return output_str
-        pass  # Sue TODO
+
+        output_str = ""
+        # ignore the first row -- this holds the index for appending
+        for row in anom_results[1:,:]:
+            # buffer is bbox_id, category (is_anomaly), confidence
+            cat = int(row[1])
+            color = "red" if cat else "limegreen"
+            class_name = "anomaly" if cat else "normal"
+            curr_str = f"ID {int(row[0])}: <b style='color: {color};'>{class_name}</b>, conf = {row[2]:.3f}<br>"
+
+            output_str += curr_str
+
+        # remove extra <br>
+        return output_str.rstrip("<br>")
 
     @staticmethod
     def parse_det_labels(label_fn):

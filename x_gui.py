@@ -21,7 +21,8 @@ from multiprocessing import shared_memory
 import multiprocessing
 from x_adxl_process import update_adxl359_vib_data_shm
 from x_imx500_process import Model, update_imx500_shm
-from x_imx500_gui_thread import CameraThread, CameraShm
+from x_imx500_gui_thread import CameraThread
+from x_utils import CameraShm
 from x_adxl_gui_thread import Adxl359Thread
 
 

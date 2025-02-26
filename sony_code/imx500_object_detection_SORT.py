@@ -101,12 +101,12 @@ class IMX500Detector:
     def _get_center(self, box: List[int]) -> Tuple[float, float]:
         x, y, w, h = box
         return (x + w/2, y + h/2)
-    
+
     def _is_point_in_region(self, point: Tuple[float, float], region: List[int]) -> bool:
         x, y = point
         rx, ry, rw, rh = region
         return (rx <= x <= rx + rw) and (ry <= y <= ry + rh)
-        
+
     def cleanup_tracking(self) -> None:
         """Remove tracking data for objects that are no longer visible."""
         if not self.last_results:
@@ -120,7 +120,7 @@ class IMX500Detector:
     def cleanup_results(self) -> None:
         if not self.last_results:
             return 
-        
+
         current_tracking_ids = {det.tracking_id for det in self.last_results}
 
         results_to_remove = [
@@ -165,9 +165,9 @@ class IMX500Detector:
         self.set_camera_config("camera_settings.json")
 
     def set_camera_config(self,json_file):
-            with open(json_file, 'r') as file:
-                config = json.load(file)
-            self.picam2.set_controls(config["controls"])
+        with open(json_file, 'r') as file:
+            config = json.load(file)
+        self.picam2.set_controls(config["controls"])
 
     @lru_cache
     def get_labels(self) -> List[str]:
@@ -184,7 +184,7 @@ class IMX500Detector:
 
         if self.intrinsics.bbox_order == "xy":
             boxes = boxes[:, [1, 0, 3, 2]]
-            
+
         boxes = np.array_split(boxes, 4, axis=1)
         boxes = list(zip(*boxes))
         return boxes, scores, classes
@@ -224,7 +224,7 @@ class IMX500Detector:
             ]
             detection.tracking_id = int(track_id)
             tracked_detections.append(detection)
-        
+
         current_time = time.time()
         self.estimate_conveyor_speed(tracked_detections, current_time)
 
@@ -245,15 +245,22 @@ class IMX500Detector:
             # draw detection region
             b_x, b_y, b_w, b_h = self.detection_region
             color = (255, 255, 0)  # Yellow
-            cv2.putText(m.array, "Detection Region", (b_x + 5, b_y + 15),
+            cv2.putText(m.array, "Detection Region", (b_x + 5, b_y + 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             cv2.rectangle(m.array, (b_x, b_y),
                         (b_x + b_w, b_y + b_h), (255, 255, 0, 0))
-            
+
             if self.conveyor_speed and self.conveyor_speed > 1:
                 speed_text = f"Conveyor Speed: {abs(self.conveyor_speed):.2f} mm/s"
-                cv2.putText(m.array, speed_text, (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+                cv2.putText(
+                    m.array,
+                    speed_text,
+                    (10, 470),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    1,
+                )
 
             for detection in self.last_results:
                 x, y, w, h = detection.box
@@ -284,7 +291,7 @@ class IMX500Detector:
 
                 # Draw text and box
                 cv2.putText(m.array, label, (text_x, text_y),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.45, bbox_color, 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.45, bbox_color, 1)
                 cv2.rectangle(m.array, (x, y), (x + w, y + h), bbox_color, 2)
             # Draw ROI if needed
             if self.intrinsics.preserve_aspect_ratio:
@@ -297,7 +304,7 @@ class IMX500Detector:
     def update_bbox_queue(self, bbox_queue: Queue) -> None:
         if not self.last_results:
             return
-        
+
         for detection in self.last_results:
             if (detection.tracking_id not in self.processed_ids 
                 and not bbox_queue.full()):
@@ -316,4 +323,3 @@ class IMX500Detector:
                 print(f"ObjDet: Added to bbox_queue: {bbox_data}")
             elif bbox_queue.full():
                 print(f"ObjDet: bbox_queue is full with {bbox_queue.qsize()} items. Not adding track ID {detection.tracking_id}")
-

@@ -10,30 +10,13 @@ from sony_code.imx500_no_model import IMX500NoModel
 import sony_code.imx500_object_detection_demo as ob_det
 import time
 from enum import Enum
-from multiprocessing import shared_memory, Lock
-from dataclasses import dataclass
+from multiprocessing import shared_memory
+from x_utils import CameraShm
 
 DET_MODEL = "sony_code/Models/detection-imx500-newlight/network.rpk"
 DET_LABEL = "sony_code/Models/detection-imx500-newlight/labels.txt"
 ANOM_MODEL = "sony_code/Models/anomaly-imx500-newlight/network.rpk"
 
-@dataclass
-class CameraShm:
-    im_shape: list[int]
-    alg_shape: list[int]
-
-    def __post_init__(self):
-        # Create shared memory and lock for camera image
-        self.im_shm = shared_memory.SharedMemory(
-            create=True, size=np.prod(self.im_shape) * np.uint8().itemsize
-        )
-        self.im_lock = Lock()
-
-        # Create shared memory and lock for algorithm output
-        self.alg_shm = shared_memory.SharedMemory(
-            create=True, size=np.prod(self.im_shape) * np.float16().itemsize
-        )
-        self.alg_lock = Lock()
 
 class Model(Enum):
     NOMODEL = 1
@@ -50,24 +33,18 @@ def anomaly_process(
 
     detector = IMX500AnomalyDetector(args)
     detector.picam2.pre_callback = lambda req: detector.process_frame(
-        req, bbox_queue, results_queue)
+        req, bbox_queue, results_queue, camera_shm)
     print("Done loading model")
 
     # Attach to shared memory block
     im_shm = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
     image = np.ndarray(camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf)
 
-    alg_shm = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
-    results = np.ndarray(camera_shm.alg_shape, dtype=np.float16, buffer=alg_shm.buf)
-
     while not event.is_set():
-        time.sleep(1/args.fps)  # TODO: running at 20 fps or 30?
+        time.sleep(1 / args.fps)  # TODO: running at 20 fps or 30?
         with camera_shm.im_lock:
             image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
-        with camera_shm.alg_lock:
-            # update anomaly information
-            pass  # TODO SUE
 
 def detection_process(event, bbox_queue, results_queue, args, camera_shm: CameraShm):
 
@@ -105,7 +82,7 @@ def detection_process(event, bbox_queue, results_queue, args, camera_shm: Camera
                     detection.tracking_id,
                     detection.category,
                     detection.conf
-                ]  # SUE DONE
+                ]
 
                 results[ind, :] = np.array(curr_results, dtype=np.float16)
 
