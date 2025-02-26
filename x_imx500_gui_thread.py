@@ -24,7 +24,6 @@ import copy
 from x_imx500_process import DET_LABEL, CameraShm
 
 
-
 class CameraThread(QThread):
     # Define a signal to send data to the main thread
     camera_feed_signal = pyqtSignal(tuple)
@@ -43,7 +42,7 @@ class CameraThread(QThread):
         self.det_camera_shm = det_camera_shm
         self.anom_camera_shm = anom_camera_shm
         self.det_labels = self.parse_det_labels(det_fn)
-        
+
     def numpy_arrray_to_pixmap(self,numpy_array):
         height, width, _ = numpy_array.shape
         q_image = QImage(numpy_array.tobytes(), width, height, 3 * width, QImage.Format_RGB888)
@@ -55,7 +54,7 @@ class CameraThread(QThread):
         # Attach to the shared memory for camera
         camera_image_det = self.readCameraImageShm(self.det_camera_shm)
         camera_image_anom = self.readCameraImageShm(self.anom_camera_shm)
-        
+
         # Check if either camera has new data
         if (self.previous_camera_det is None or not np.array_equal(camera_image_det, self.previous_camera_det)) or \
            (self.previous_camera_anom is None or not np.array_equal(camera_image_anom, self.previous_camera_anom)):
@@ -69,9 +68,10 @@ class CameraThread(QThread):
         det_results = self.readAlgResults(self.det_camera_shm)
         anom_results = self.readAlgResults(self.anom_camera_shm)
 
-        det_log = self.det_results_to_string(det_results)
-        anom_log = self.anom_results_to_string(anom_results)
-        self.log_feed_signal.emit((det_log, anom_log))  # TODO SUE
+        if det_results.shape[0] > 0 or anom_results.shape[0] > 0:
+            det_log = self.det_results_to_string(det_results)
+            anom_log = self.anom_results_to_string(anom_results)
+            self.log_feed_signal.emit((det_log, anom_log))  # SUE DONE
 
     @staticmethod
     def readCameraImageShm(camera_shm: CameraShm):
@@ -105,19 +105,24 @@ class CameraThread(QThread):
     def det_results_to_string(self, det_results):
 
         output_str = ""
+        # sort the rows by tracking_id (column 0)
+        det_results = det_results[det_results[:, 0].argsort()]
+
         for row in det_results:
 
-            # buffer is category, confidence, tracking_id
-            cat = row[0]
-            class_name = self.det_labels[int(row[0])]
+            # buffer is tracking_id, category, confidence
+            class_name = self.det_labels[int(row[1])]
+
+            curr_str = f'TrackID {row[0]}: '
             if class_name == "smarties":
-                curr_str = f'TrackID {row[2]}: <font color="blue">{class_name}</font>, confidence = {row[1]}\n'
+                curr_str += f'<font color="blue">{class_name}</font>'
             else:
-                curr_str = f'TrackID {row[2]}: <font color="red">{class_name}</font>, confidence = {row[1]}\n'
+                curr_str += f'<font color="red">{class_name}</font>'
+            curr_str += f", conf = {row[2]:.3f}"
 
-            output_str += curr_str
+            output_str += curr_str + "\n"
 
-        return output_str  # Sue TODO
+        return output_str  # Sue DONE
 
     def anom_results_to_string(self, anom_results):
         # return output_str

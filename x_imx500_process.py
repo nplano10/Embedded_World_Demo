@@ -93,20 +93,19 @@ def detection_process(event, bbox_queue, results_queue, args, camera_shm: Camera
         )
         detector.update_bbox_queue(bbox_queue)
 
+        # Update image in shared memory
         with camera_shm.im_lock:
-            # Update image in shared memory
             image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
+        # Update detection results in shared memory
         with camera_shm.alg_lock:
-            # Update detection results in shared memory
-            num_results = len(detector.last_results)
             for ind, detection in enumerate(detector.last_results):
 
                 curr_results = [
-                    detection.category,
-                    detection.conf,
                     detection.tracking_id,
-                ]  # TODO SUE
+                    detection.category,
+                    detection.conf
+                ]  # SUE DONE
 
                 results[ind, :] = np.array(curr_results, dtype=np.float16)
 

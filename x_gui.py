@@ -403,16 +403,16 @@ class MainWindow(QMainWindow):
         self.adxl359_thread.setPriority(QThread.LowPriority)
 
     def update_camera_feed(self,camera_data_tuple):
-
         det_camera, anom_camera = camera_data_tuple
         self.display_image(self.camera_feed_1, det_camera)
         self.display_image(self.camera_feed_2, anom_camera)
 
     def update_camera_log(self, camera_log_data_tuple):
-        # TODO SUE
-        log_one, log_two = camera_log_data_tuple
-        self.print_log(self.camera_log_1, log_one)
-        self.print_log(self.camera_log_2, log_two)
+        det_log, anom_log = camera_log_data_tuple
+        if det_log:
+            self.print_log(self.camera_log_1, det_log, overwrite=True)
+        if anom_log:
+            self.print_log(self.camera_log_2, anom_log)
 
     def update_adxl359_feed(self,plot_tuple):
         vibx_graph, viby_graph, vibz_graph, vib_anom_graph = plot_tuple
@@ -425,5 +425,9 @@ class MainWindow(QMainWindow):
     def display_image(self, label: QLabel, image_pixmap):
         label.setPixmap(image_pixmap.scaled(label.width,label.height))
 
-    def print_log(self, textbox: QTextEdit, log_info):
-        textbox.append(log_info)
+    def print_log(self, textbox: QTextEdit, log_info, overwrite=False):
+
+        if overwrite:
+            textbox.setText(log_info)
+        else:
+            textbox.append(log_info)
