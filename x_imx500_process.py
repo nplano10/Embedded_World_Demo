@@ -1,16 +1,12 @@
 import numpy as np
 from multiprocessing import shared_memory
-from picamera2 import Picamera2
 import argparse
 from multiprocessing import Process, Queue
-from sony_code.imx500_object_detection_SORT import IMX500Detector, Detection
+from sony_code.imx500_object_detection_SORT import IMX500Detector
 from sony_code.imx500_anomaly_detection import IMX500AnomalyDetector
-from sony_code.imx500_object_detection_demo import IMX500ObjectDetector
 from sony_code.imx500_no_model import IMX500NoModel
-import sony_code.imx500_object_detection_demo as ob_det
 import time
 from enum import Enum
-from multiprocessing import shared_memory
 from x_utils import CameraShm
 
 DET_MODEL = "sony_code/Models/detection-imx500-newlight/network.rpk"
@@ -158,7 +154,7 @@ def update_imx500_shm(
         model=DET_MODEL,
         labels=DET_LABEL,
         camera_index=0,
-        fps=25,
+        fps=20,
         max_disappeared=20,
         iou=0.65,
         threshold=0.5,

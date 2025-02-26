@@ -84,7 +84,7 @@ class MainWindow(QMainWindow):
         # Set up the QTimer to update the images at 25 fps seconds
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.start_camera_thread)
-        self.camera_timer.start(int(1000 / 25))  # Update 25 times every 1000ms
+        self.camera_timer.start(int(1000 / 20))  # Update 25 times every 1000ms
 
         self.adxl359_timer = QTimer(self)
         self.adxl359_timer.timeout.connect(self.start_sensor_thread)
@@ -166,18 +166,18 @@ class MainWindow(QMainWindow):
         button_start = QPushButton("Start", self)
         button_start.setFixedSize(width_buttons, height_buttons)
         button_start.setStyleSheet(
-            "background-color: darkgray; border: 1px solid lightgray; color: white;"
+            "background-color: darkgray; border: 1px solid lightgray; color: black;"
         )
 
         button_stop = QPushButton("Stop", self)
         button_stop.setFixedSize(width_buttons, height_buttons)
         button_stop.setStyleSheet(
-            "background-color: darkgray; border: 1px solid lightgray; color: white;"
+            "background-color: darkgray; border: 1px solid lightgray; color: black;"
         )
         button_dispense = QPushButton("Dispense", self)
         button_dispense.setFixedSize(width_buttons, height_buttons)
         button_dispense.setStyleSheet(
-            "background-color: darkgray; border: 1px solid lightgray; color: white;"
+            "background-color: darkgray; border: 1px solid lightgray; color: black;"
         )
         # Create button layout and add buttons to it
         button_layout = QVBoxLayout()
@@ -351,6 +351,27 @@ class MainWindow(QMainWindow):
                 ),
             )
             self.camera_processes.start()
+
+            # Clear the shm
+            det_shm = shared_memory.SharedMemory(name=self.det_camera_shm.alg_shm.name)
+            results = np.ndarray(
+                self.det_camera_shm.alg_shape, dtype=np.float16, buffer=det_shm.buf
+            )
+            with self.det_camera_shm.im_lock:
+                results[:] = 0
+
+            anom_shm = shared_memory.SharedMemory(name=self.anom_camera_shm.alg_shm.name)
+            results = np.ndarray(
+                self.anom_camera_shm.alg_shape, dtype=np.float16, buffer=anom_shm.buf
+            )
+            with self.anom_camera_shm.im_lock:
+                results[:] = 0
+
+            # Clear the log history
+            self.camera_log_1.clear()
+            self.camera_log_2.clear()
+            self.camera_log_1.update()
+            self.camera_log_2.update()
 
     def exit_application(self):
 

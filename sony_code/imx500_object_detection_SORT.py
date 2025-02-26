@@ -20,12 +20,11 @@ import numpy as np
 from sony_code.sort import Sort
 from functools import lru_cache
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict, Set
+from typing import List, Tuple, Optional, Set
 from picamera2 import MappedArray, Picamera2
 from picamera2.devices import IMX500
-from picamera2.devices.imx500 import (NetworkIntrinsics,
-                                    postprocess_nanodet_detection)
-from multiprocessing import Process, Queue
+from picamera2.devices.imx500 import NetworkIntrinsics
+from multiprocessing import Queue
 import json
 @dataclass
 class Detection:
