@@ -37,7 +37,15 @@ def pixmap_to_numpy(pixmap):
 
 
 def get_anomaly_scores(vibx, viby, vibz):
-    vib_score = np.random.rand(1)[0]
+    # vib_score = np.random.rand(1)[0]
+    # print(f"Min, Max vibx: {np.min(vibx)}, {np.max(vibx)}")
+    # print(f"Min, Max viby: {np.min(viby)}, {np.max(viby)}")
+    # print(f"Min, Max vibz: {np.min(vibz)}, {np.max(vibz)}")
+    # vib_score = np.sqrt(np.square(vibx) + np.square(viby) + np.square(vibz))
+    vib_score = np.abs(0.006 - np.sqrt(np.square(viby).mean()))   # compute RMSE
+    # print(vib_score)
+    vib_score = vib_score * 60.0
+    vib_score = min(vib_score, 1.0)
     return vib_score
 
 
@@ -57,15 +65,15 @@ def update_adxl359_vib_data_shm(
     adxl359_vib_data_shape,
     adxl359_lock,
 ):
-    vib_ylim = [-4, 4]
-    anomaly_threshold = 0.5
+    vib_ylim = [-0.1, 0.1]
+    anomaly_threshold = 0.3
     anomaly_history = 20
 
     h = adxl359_vib_data_shape[0]
     w = adxl359_vib_data_shape[1]
 
-    # adxl359 = ADXL359()  # Adjust according to your actual initialization code
-    # adxl359._initialize()
+    adxl359 = ADXL359()  # Adjust according to your actual initialization code
+    adxl359._initialize()
 
     plot1 = pg.PlotWidget(title="Vibration X Axis")
     plot2 = pg.PlotWidget(title="Vibration Y Axis")
@@ -132,11 +140,8 @@ def update_adxl359_vib_data_shm(
     # shared_adxl359_temp_data = np.ndarray((1,), dtype=np.float16, buffer=existing_adxl359_temp_shm.buf)
 
     while True:
-        # x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object
-        x_data = np.random.randn(1000)
-        y_data = np.random.randn(1000) 
-        z_data = np.random.randn(1000)
-        time.sleep(1)
+        x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object
+
         plot1_item.setData(np.linspace(0, 1000, 1000).tolist(), x_data)
         plot2_item.setData(np.linspace(0, 1000, 1000).tolist(), y_data)
         plot3_item.setData(np.linspace(0, 1000, 1000).tolist(), z_data)
