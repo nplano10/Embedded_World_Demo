@@ -36,7 +36,7 @@ class MainWindow(QMainWindow):
         self.adxl359_sample_rate = 1000
         self.adxl359_sample_length = 1000
 
-        self.model = Model.NOMODEL
+        self.model = Model.NO_MODEL
 
         # Set up the window to match the screen size
         screen = QDesktopWidget().screenGeometry()
@@ -193,6 +193,11 @@ class MainWindow(QMainWindow):
         group_frame.setFrameShape(QFrame.StyledPanel)  # Border style
         group_frame.setFrameShadow(QFrame.Raised)     # Shadow effect (optional)
 
+        # Create model label to display current model
+        self.model_label = QLabel(self)
+        self.model_label.setStyleSheet("font-size: 13px; color: lightblue")
+        self.model_label.setText(f"<b><i>Current: {self.model.name}</i></b>")
+
         # Create Apply Model button and dropdown
         apply_model_button = QPushButton("Apply Model", self)
         apply_model_button.clicked.connect(
@@ -219,19 +224,13 @@ class MainWindow(QMainWindow):
         # self.model_selection.addButton(self.radio_button2)
 
         apply_model_layout = QVBoxLayout(group_frame)
+        apply_model_layout.addWidget(self.model_label)
         apply_model_layout.addWidget(self.radio_button1)
         apply_model_layout.addWidget(self.radio_button2)
         apply_model_layout.addWidget(apply_model_button)
 
         # button_layout.addLayout(apply_model_layout)
         button_layout.addWidget(group_frame)
-
-        # # Create temperature label
-        # self.temperature_label = QLabel(self)
-        # self.temperature_label.setStyleSheet("font-size: 18px;")
-
-        # # Add buttons, apply model controls, and temperature label to the bottom-left layout
-        # button_layout.addWidget(self.temperature_label)
 
         return button_layout
 
@@ -372,6 +371,9 @@ class MainWindow(QMainWindow):
             self.camera_log_2.clear()
             self.camera_log_1.update()
             self.camera_log_2.update()
+
+            # Update the model information
+            self.model_label.setText(f"<b><i>Current: {self.model.name}</i></b>")
 
     def exit_application(self):
 
