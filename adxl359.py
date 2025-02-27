@@ -35,7 +35,7 @@ class ADXL359:
         self.DEVID_AD = 0x00
         self.POWER_CTL = 0x2D
         self.FILTER = 0x28
-        self.FILTER_OP = 0x13
+        self.FILTER_OP = 0x12
         self.OP_MODE=0x00
         self.TEMP_AND_ACC_START_ADDRESS =0x06
         self.X_DATA = 0x08
