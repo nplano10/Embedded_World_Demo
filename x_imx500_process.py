@@ -15,7 +15,7 @@ ANOM_MODEL = "sony_code/Models/anomaly-imx500-newlight/network.rpk"
 
 
 class Model(Enum):
-    NOMODEL = 1
+    NO_MODEL = 1
     TRAINED = 2
 
 
@@ -200,5 +200,5 @@ def update_imx500_shm(
         pill_detection_proc.join()
         anomaly_detection_proc.join()
 
-    if selected_model == Model.NOMODEL:
+    if selected_model == Model.NO_MODEL:
         no_model_process(event, det_camera_shm, anom_camera_shm)
