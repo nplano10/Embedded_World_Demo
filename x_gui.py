@@ -163,27 +163,27 @@ class MainWindow(QMainWindow):
         # Set up buttons
         # ============================
 
-        button_start = QPushButton("Start", self)
-        button_start.setFixedSize(width_buttons, height_buttons)
-        button_start.setStyleSheet(
-            "background-color: darkgray; border: 1px solid lightgray; color: black;"
-        )
+        # button_start = QPushButton("Start", self)
+        # button_start.setFixedSize(width_buttons, height_buttons)
+        # button_start.setStyleSheet(
+        #     "background-color: darkgray; border: 1px solid lightgray; color: black;"
+        # )
 
-        button_stop = QPushButton("Stop", self)
-        button_stop.setFixedSize(width_buttons, height_buttons)
-        button_stop.setStyleSheet(
-            "background-color: darkgray; border: 1px solid lightgray; color: black;"
-        )
-        button_dispense = QPushButton("Dispense", self)
-        button_dispense.setFixedSize(width_buttons, height_buttons)
-        button_dispense.setStyleSheet(
-            "background-color: darkgray; border: 1px solid lightgray; color: black;"
-        )
-        # Create button layout and add buttons to it
+        # button_stop = QPushButton("Stop", self)
+        # button_stop.setFixedSize(width_buttons, height_buttons)
+        # button_stop.setStyleSheet(
+        #     "background-color: darkgray; border: 1px solid lightgray; color: black;"
+        # )
+        # button_dispense = QPushButton("Dispense", self)
+        # button_dispense.setFixedSize(width_buttons, height_buttons)
+        # button_dispense.setStyleSheet(
+        #     "background-color: darkgray; border: 1px solid lightgray; color: black;"
+        # )
+        # # Create button layout and add buttons to it
         button_layout = QVBoxLayout()
-        button_layout.addWidget(button_start, alignment=Qt.AlignCenter)
-        button_layout.addWidget(button_stop, alignment=Qt.AlignCenter)
-        button_layout.addWidget(button_dispense, alignment=Qt.AlignCenter)
+        # button_layout.addWidget(button_start, alignment=Qt.AlignCenter)
+        # button_layout.addWidget(button_stop, alignment=Qt.AlignCenter)
+        # button_layout.addWidget(button_dispense, alignment=Qt.AlignCenter)
 
         # ============================
         # Set up model selection
@@ -230,7 +230,9 @@ class MainWindow(QMainWindow):
         apply_model_layout.addWidget(apply_model_button)
 
         # button_layout.addLayout(apply_model_layout)
+        button_layout.addStretch(1)
         button_layout.addWidget(group_frame)
+        button_layout.addStretch(1)
 
         return button_layout
 
