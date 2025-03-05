@@ -42,10 +42,12 @@ def get_anomaly_scores(vibx, viby, vibz):
     # print(f"Min, Max viby: {np.min(viby)}, {np.max(viby)}")
     # print(f"Min, Max vibz: {np.min(vibz)}, {np.max(vibz)}")
     # vib_score = np.sqrt(np.square(vibx) + np.square(viby) + np.square(vibz))
-    vib_score = np.abs(0.006 - np.sqrt(np.square(viby).mean()))   # compute RMSE
-    # print(vib_score)
+    # vib_score = np.abs(0.006 - np.sqrt(np.square(viby).mean()))  # compute RMSE
+    vib_score = np.sqrt(np.square(viby).mean())-.004  # compute RMSE
+    #print(vib_score)
     vib_score = vib_score * 60.0
     vib_score = min(vib_score, 1.0)
+    vib_score = max(vib_score, 0.0)
     return vib_score
 
 
@@ -140,32 +142,36 @@ def update_adxl359_vib_data_shm(
     # shared_adxl359_temp_data = np.ndarray((1,), dtype=np.float16, buffer=existing_adxl359_temp_shm.buf)
 
     while True:
-        x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object
+        try:
+            x_data,y_data,z_data,temp_data = adxl359.collect_data() # Example method from adxl359 object
+            plot1_item.setData(np.linspace(0, 1000, 1000).tolist(), x_data)
+            plot2_item.setData(np.linspace(0, 1000, 1000).tolist(), y_data)
+            plot3_item.setData(np.linspace(0, 1000, 1000).tolist(), z_data)
 
-        plot1_item.setData(np.linspace(0, 1000, 1000).tolist(), x_data)
-        plot2_item.setData(np.linspace(0, 1000, 1000).tolist(), y_data)
-        plot3_item.setData(np.linspace(0, 1000, 1000).tolist(), z_data)
+            # temperature_label.setText(f"Temperature: {temp:.2f} °C")
 
-        # temperature_label.setText(f"Temperature: {temp:.2f} °C")
-
-        vib_anomaly_scores = update_anomaly_score_arrays(
-            vib_anomaly_scores, x_data, y_data, z_data
-        )
-        # vib_anomaly_scores_good = vib_anomaly_scores.copy()
-        # vib_anomaly_scores_bad = vib_anomaly_scores.copy()
-
-        bad_pts = vib_anomaly_scores >= anomaly_threshold
-
-        anomaly_score_all_item.setData(index, vib_anomaly_scores)
-        anomaly_score_norm_item.setData(index[~bad_pts], vib_anomaly_scores[~bad_pts])
-        anomaly_score_anom_item.setData(index[bad_pts], vib_anomaly_scores[bad_pts])
-
-        with adxl359_lock:                                        
-            shared_adxl359_vib_data[:, :, :, 0] = pixmap_to_numpy(plot1.grab())
-            shared_adxl359_vib_data[:, :, :, 1] = pixmap_to_numpy(plot2.grab())
-            shared_adxl359_vib_data[:, :, :, 2] = pixmap_to_numpy(plot3.grab())
-            shared_adxl359_vib_data[:, :, :, 3] = pixmap_to_numpy(
-                anomaly_score_plot.grab()
+            vib_anomaly_scores = update_anomaly_score_arrays(
+                vib_anomaly_scores, x_data, y_data, z_data
             )
+            # vib_anomaly_scores_good = vib_anomaly_scores.copy()
+            # vib_anomaly_scores_bad = vib_anomaly_scores.copy()
+
+            bad_pts = vib_anomaly_scores >= anomaly_threshold
+
+            anomaly_score_all_item.setData(index, vib_anomaly_scores)
+            anomaly_score_norm_item.setData(index[~bad_pts], vib_anomaly_scores[~bad_pts])
+            anomaly_score_anom_item.setData(index[bad_pts], vib_anomaly_scores[bad_pts])
+
+            with adxl359_lock:                                        
+                shared_adxl359_vib_data[:, :, :, 0] = pixmap_to_numpy(plot1.grab())
+                shared_adxl359_vib_data[:, :, :, 1] = pixmap_to_numpy(plot2.grab())
+                shared_adxl359_vib_data[:, :, :, 2] = pixmap_to_numpy(plot3.grab())
+                shared_adxl359_vib_data[:, :, :, 3] = pixmap_to_numpy(
+                    anomaly_score_plot.grab()
+            )
+        except:
+            print("data failed to capture")
+
+        
 
             # shared_adxl359_temp_data[0] = temp_data[0]

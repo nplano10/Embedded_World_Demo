@@ -9,10 +9,10 @@ import time
 from enum import Enum
 from x_utils import CameraShm
 
-DET_MODEL = "sony_code/Models/detection-imx500-newlight/network.rpk"
-DET_LABEL = "sony_code/Models/detection-imx500-newlight/labels.txt"
+DET_MODEL = "sony_code/Models/detection-mixed/network.rpk"
+DET_LABEL = "sony_code/Models/detection-mixed/labels.txt"
+#ANOM_MODEL = "sony_code/Models/anomaly-mixed/network.rpk"
 ANOM_MODEL = "sony_code/Models/anomaly-imx500-newlight/network.rpk"
-
 
 class Model(Enum):
     NO_MODEL = 1
@@ -143,9 +143,9 @@ def update_imx500_shm(
 ):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
-    CAMERA_DISTANCE_PIXELS = -160  # Distance in pixels
+    CAMERA_DISTANCE_PIXELS = -150  # Distance in pixels
     PIXELS_PER_MM = CAMERA_DISTANCE_PIXELS / CAMERA_DISTANCE_MM
-    DETECTION_REGION = [20, 0, 600, 410]  # x, y, w, h
+    DETECTION_REGION = [0, 0, 465, 410]  # x, y, w, h
 
     bbox_queue = Queue(maxsize=50)  # Queue for passing bounding boxes
     results_queue = Queue()  # Queue for receiving classification results
@@ -154,7 +154,7 @@ def update_imx500_shm(
         model=DET_MODEL,
         labels=DET_LABEL,
         camera_index=0,
-        fps=20,
+        fps=14,
         max_disappeared=20,
         iou=0.65,
         threshold=0.5,
@@ -165,11 +165,11 @@ def update_imx500_shm(
     anomaly_detection_args = argparse.Namespace(
         model=ANOM_MODEL,
         camera_index=1,
-        fps=20,
+        fps=14,
         image_threshold=0.435,
         pixel_threshold=0.30,
         constant_offset_in_pixel=CAMERA_DISTANCE_PIXELS,
-        roi_box_size=90,
+        roi_box_size=110,
         pixels_per_mm=PIXELS_PER_MM
     )
 
