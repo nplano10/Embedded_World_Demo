@@ -222,21 +222,21 @@ class IMX500AnomalyDetector:
                 bbox = bbox_queue.get()
                 bbox_id = bbox["id"]
 
-                if bbox_id not in self.processed_bbox_ids:
-                    scaled_bbox = self.scale_bbox_to_detection(
-                        (bbox['x'], bbox['y'], bbox['w'], bbox['h'],
-                        bbox['time'], bbox['speed']),
-                        scale_x=6.3375,
-                        scale_y=6.3333
-                    )
-                    self.imx500.set_inference_roi_abs(scaled_bbox)
+                # if bbox_id not in self.processed_bbox_ids:
+                scaled_bbox = self.scale_bbox_to_detection(
+                    (bbox['x'], bbox['y'], bbox['w'], bbox['h'],
+                    bbox['time'], bbox['speed']),
+                    scale_x=6.3375,
+                    scale_y=6.3333
+                )
+                self.imx500.set_inference_roi_abs(scaled_bbox)
 
-                    self.roi_settings[self.frame_count] = ROIState(
-                        bbox_id=bbox_id,
-                        roi=scaled_bbox,
-                        detection_time=bbox['time'],
-                        set_frame=self.frame_count
-                    )
+                self.roi_settings[self.frame_count] = ROIState(
+                    bbox_id=bbox_id,
+                    roi=scaled_bbox,
+                    detection_time=bbox['time'],
+                    set_frame=self.frame_count
+                )
 
             old_frames = [f for f in self.roi_settings.keys() 
                         if f < self.frame_count - self.frames_to_wait - 10]

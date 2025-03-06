@@ -65,7 +65,10 @@ class IMX500Detector:
         self.last_results: None | List[Detection] = None
         # Track processed IDs
         self.processed_ids: Set[int] = set()
+        self.anomaly_threshold = args.anomaly_image_threshold
         self.anomaly_results = {}
+        self.anomaly_scores = {}
+        self.anomaly_views = {}
         self.previous_positions = {}  # Store previous positions
         # Conveyor belt speed
         self.prev_time = 0
@@ -132,6 +135,8 @@ class IMX500Detector:
 
         for tracking_id in results_to_remove:
             del self.anomaly_results[tracking_id]
+            del self.anomaly_scores[tracking_id]
+            del self.anomaly_views[tracking_id]
 
     def _select_camera(self, camera_index: int) -> str:
         cameras = [
@@ -273,7 +278,21 @@ class IMX500Detector:
         # Get all available classification results
         while not results_queue.empty():
             result = results_queue.get()
-            self.anomaly_results[result["id"]] = result["is_anomaly"]
+
+            # Compute the average score
+            if result["id"] in self.anomaly_scores.keys():
+                old_score = self.anomaly_scores[result["id"]]
+                num_views = self.anomaly_views[result["id"]]
+            else:
+                old_score = 0.
+                num_views = 0.
+            new_score = (old_score * num_views + result["anomaly_score"])/(num_views+1)
+            self.anomaly_scores[result["id"]] = new_score
+            self.anomaly_views[result["id"]] = num_views + 1
+
+            # Apply threshold to updated score
+            self.anomaly_results[result["id"]] = new_score >= self.anomaly_threshold
+
         labels = self.get_labels()
         with MappedArray(request, "main") as m:
             # draw detection region
@@ -344,22 +363,28 @@ class IMX500Detector:
 
         for detection in self.last_results:
             if (
-                detection.tracking_id not in self.processed_ids
-                and not bbox_queue.full()
+                not bbox_queue.full()
                 and not labels[detection.category] == JELLYBEAN
             ):
-                x, y, w, h = detection.box
-                bbox_data = {
-                    "time": time.time(),
-                    "id": detection.tracking_id,
-                    "x": x,
-                    "y": y,
-                    "w": w,
-                    "h": h,
-                    "speed": int(self.conveyor_speed),
-                }
-                bbox_queue.put(bbox_data)
-                self.processed_ids.add(detection.tracking_id)
-                print(f"ObjDet: Added to bbox_queue: {bbox_data}")
+
+                if (
+                    detection.tracking_id not in self.processed_ids # new track
+                    or bbox_queue.qsize() < 4  # old track
+                ):
+
+                    x, y, w, h = detection.box
+                    bbox_data = {
+                        "time": time.time(),
+                        "id": detection.tracking_id,
+                        "x": x,
+                        "y": y,
+                        "w": w,
+                        "h": h,
+                        "speed": int(self.conveyor_speed),
+                    }
+                    bbox_queue.put(bbox_data)
+                    self.processed_ids.add(detection.tracking_id)
+                    print(f"ObjDet: Added to bbox_queue: {bbox_data}")
+
             elif bbox_queue.full():
                 print(f"ObjDet: bbox_queue is full with {bbox_queue.qsize()} items. Not adding track ID {detection.tracking_id}")
