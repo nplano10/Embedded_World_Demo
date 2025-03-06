@@ -11,7 +11,7 @@ History       :
               : 1.0 - 2025-01-30 Create Script
               : 1.1 - 2025-02-02 Add detection region
               : 1.2 - 2025-02-11 bug fix, improve the display
-
+              : 1.3 - 2025-03-05 bug fix for model has more than 2 classes
 """
 
 import time
@@ -215,14 +215,46 @@ class IMX500Detector:
             np.array([d.bbox_for_sort for d in detections])
         )
         tracked_detections = []
-        for detection, track in zip(detections[:len(tracked_objects)], tracked_objects):
+        detection_boxes = np.array([d.bbox_for_sort for d in detections])
+
+        for track in tracked_objects:
             x_min, y_min, x_max, y_max, track_id = track
-            detection.box = [
-                int(x_min), int(y_min),
-                int(x_max - x_min), int(y_max - y_min)
-            ]
-            detection.tracking_id = int(track_id)
-            tracked_detections.append(detection)
+            track_box = np.array([x_min, y_min, x_max, y_max])
+
+            # Calculate IoU between this track and all detections
+            best_match_idx = -1
+            best_iou = 0.0
+            for i, det_box in enumerate(detection_boxes):
+
+                # Calculate intersection
+                x_left = max(track_box[0], det_box[0])
+                y_top = max(track_box[1], det_box[1])
+                x_right = min(track_box[2], det_box[2])
+                y_bottom = min(track_box[3], det_box[3])
+                if x_right < x_left or y_bottom < y_top:
+                    continue  # No intersection
+
+                intersection = (x_right - x_left) * (y_bottom - y_top)
+                area1 = (track_box[2] - track_box[0]) * (track_box[3] - track_box[1])
+                area2 = (det_box[2] - det_box[0]) * (det_box[3] - det_box[1])
+                current_iou = intersection / (area1 + area2 - intersection)
+                if current_iou > best_iou:
+                    best_iou = current_iou
+                    best_match_idx = i
+
+            if best_match_idx >= 0:
+                # Found a matching detection
+                det = detections[best_match_idx]
+                det_copy = Detection(
+                    category=det.category,
+                    conf=det.conf,
+                    box=[
+                        int(x_min), int(y_min),
+                        int(x_max - x_min), int(y_max - y_min)
+                    ],
+                    tracking_id=int(track_id)
+                )
+                tracked_detections.append(det_copy)
 
         current_time = time.time()
         self.estimate_conveyor_speed(tracked_detections, current_time)
