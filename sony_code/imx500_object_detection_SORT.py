@@ -302,7 +302,7 @@ class IMX500Detector:
 
                 # Add classification result if available
                 bbox_color = (255, 255, 0, 0)
-                if detection.category == JELLYBEAN:
+                if labels[detection.category] == JELLYBEAN:
                     bbox_color = (255, 0, 0, 0) # red for jellybean
                 if detection.tracking_id in self.anomaly_results:
                     if not self.anomaly_results[detection.tracking_id]:
@@ -340,12 +340,13 @@ class IMX500Detector:
     def update_bbox_queue(self, bbox_queue: Queue) -> None:
         if not self.last_results:
             return
+        labels = self.get_labels()
 
         for detection in self.last_results:
             if (
                 detection.tracking_id not in self.processed_ids
                 and not bbox_queue.full()
-                and not detection.category == JELLYBEAN
+                and not labels[detection.category] == JELLYBEAN
             ):
                 x, y, w, h = detection.box
                 bbox_data = {
