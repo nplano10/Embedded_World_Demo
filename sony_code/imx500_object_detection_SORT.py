@@ -26,6 +26,9 @@ from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
 from multiprocessing import Queue
 import json
+
+JELLYBEAN = "jellybean"
+
 @dataclass
 class Detection:
     category: int
@@ -299,6 +302,8 @@ class IMX500Detector:
 
                 # Add classification result if available
                 bbox_color = (255, 255, 0, 0)
+                if detection.category == JELLYBEAN:
+                    bbox_color = (255, 0, 0, 0) # red for jellybean
                 if detection.tracking_id in self.anomaly_results:
                     if not self.anomaly_results[detection.tracking_id]:
                         bbox_color = (0, 255, 0, 0) # green for normal pill
@@ -337,8 +342,11 @@ class IMX500Detector:
             return
 
         for detection in self.last_results:
-            if (detection.tracking_id not in self.processed_ids 
-                and not bbox_queue.full()):
+            if (
+                detection.tracking_id not in self.processed_ids
+                and not bbox_queue.full()
+                and not detection.category == JELLYBEAN
+            ):
                 x, y, w, h = detection.box
                 bbox_data = {
                     "time": time.time(),
