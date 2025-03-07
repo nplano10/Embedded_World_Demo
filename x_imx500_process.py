@@ -143,10 +143,10 @@ def update_imx500_shm(
 ):
 
     CAMERA_DISTANCE_MM = 40  # Physical distance between cameras in mm
-    CAMERA_DISTANCE_PIXELS = -150  # Distance in pixels
+    CAMERA_DISTANCE_PIXELS = -140  # Distance in pixels
     PIXELS_PER_MM = CAMERA_DISTANCE_PIXELS / CAMERA_DISTANCE_MM
     DETECTION_REGION = [0, 70, 465, 340]  # x, y, w, h
-    ANOMALY_IMAGE_THRESHOLD = 0.435
+    ANOMALY_IMAGE_THRESHOLD = 0.45
 
     bbox_queue = Queue(maxsize=50)  # Queue for passing bounding boxes
     results_queue = Queue()  # Queue for receiving classification results
