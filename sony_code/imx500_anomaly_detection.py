@@ -215,6 +215,13 @@ class IMX500AnomalyDetector:
                         ]
                         results[0, 0] += 1  # update the last used row
 
+                    im_shm = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
+                    image = np.ndarray(camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf)
+                    with camera_shm.im_lock:
+                        image[:] = self.picam2.capture_array().astype(np.uint8)[
+                            :, :, :3
+                        ]
+
                 del self.roi_settings[result_frame]
 
             # set ROI

@@ -32,14 +32,15 @@ def anomaly_process(
         req, bbox_queue, results_queue, camera_shm)
     print("Done loading model")
 
-    # Attach to shared memory block
-    im_shm = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
-    image = np.ndarray(camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf)
+    # # Attach to shared memory block
+    # im_shm = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
+    # image = np.ndarray(camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf)
 
     while not event.is_set():
-        time.sleep(1 / args.fps)  # TODO: running at 20 fps or 30?
-        with camera_shm.im_lock:
-            image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
+        time.sleep(0.1)
+        # time.sleep(1 / args.fps)  # TODO: running at 20 fps or 30?
+        # with camera_shm.im_lock:
+        #     image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
 
 
 def detection_process(event, bbox_queue, results_queue, args, camera_shm: CameraShm):
