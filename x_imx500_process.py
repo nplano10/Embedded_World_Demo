@@ -11,8 +11,8 @@ from x_utils import CameraShm
 
 DET_MODEL = "sony_code/Models/detection-mixed/network.rpk"
 DET_LABEL = "sony_code/Models/detection-mixed/labels.txt"
-# ANOM_MODEL = "sony_code/Models/anomaly-mixed/network.rpk"
-ANOM_MODEL = "sony_code/Models/anomaly-imx500-newlight/network.rpk"
+# ANOM_MODEL = "sony_code/Models/anomaly-imx500-newlight/network.rpk"
+ANOM_MODEL = "sony_code/Models/anomaly-tradeshow/network.rpk"
 
 class Model(Enum):
     NO_MODEL = 1
