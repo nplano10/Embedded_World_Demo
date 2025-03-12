@@ -69,6 +69,10 @@ class IMX500Detector:
         self.anomaly_results = {}
         self.anomaly_scores = {}
         self.anomaly_views = {}
+
+
+        self.anomaly_medians={}
+
         self.previous_positions = {}  # Store previous positions
         # Conveyor belt speed
         self.prev_time = 0
@@ -137,6 +141,7 @@ class IMX500Detector:
             del self.anomaly_results[tracking_id]
             del self.anomaly_scores[tracking_id]
             del self.anomaly_views[tracking_id]
+            del self.anomaly_medians[tracking_id]
 
     def _select_camera(self, camera_index: int) -> str:
         cameras = [
@@ -283,10 +288,15 @@ class IMX500Detector:
             if result["id"] in self.anomaly_scores.keys():
                 old_score = self.anomaly_scores[result["id"]]
                 num_views = self.anomaly_views[result["id"]]
+                self.anomaly_medians[result["id"]].append(old_score)
             else:
                 old_score = 0.
                 num_views = 0.
-            new_score = (old_score * num_views + result["anomaly_score"])/(num_views+1)
+                self.anomaly_medians[result["id"]] = [result["anomaly_score"]]
+
+
+            #new_score = (old_score * num_views + result["anomaly_score"])/(num_views+1)
+            new_score = np.median(self.anomaly_medians[result["id"]])
             self.anomaly_scores[result["id"]] = new_score
             self.anomaly_views[result["id"]] = num_views + 1
 
