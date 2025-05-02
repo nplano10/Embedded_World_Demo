@@ -26,6 +26,7 @@ from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
 from multiprocessing import Queue
 import json
+from multiprocessing import shared_memory
 
 JELLYBEAN = "jellybean"
 
@@ -43,7 +44,7 @@ class Detection:
         return [x, y, x + w, y + h]
 
 class IMX500Detector:
-    def __init__(self, args):
+    def __init__(self, args, camera_shm=None):
         self.camera_path = self._select_camera(args.camera_index)
         self.imx500 = IMX500(network_file=args.model, camera_id=self.camera_path)
         self.intrinsics = self.imx500.network_intrinsics
@@ -70,7 +71,6 @@ class IMX500Detector:
         self.anomaly_scores = {}
         self.anomaly_views = {}
 
-
         self.anomaly_medians={}
 
         self.previous_positions = {}  # Store previous positions
@@ -79,6 +79,22 @@ class IMX500Detector:
         self.conveyor_speed = 0.0    # Current estimated conveyor speed
         self.speed_history = []
         self.history_window = 10     # Number of frames to average speed over
+
+        self.args = args
+
+        self.camera_shm = camera_shm
+        if self.camera_shm:
+            self.im_shm_handle = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
+            self.shm_image = np.ndarray(
+                self.camera_shm.im_shape, 
+                dtype=np.uint8, 
+                buffer=self.im_shm_handle.buf
+            )
+            self.alg_shm_handle = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
+            self.shm_results = np.ndarray(
+                self.camera_shm.alg_shape, 
+                dtype=np.float16, 
+                buffer=self.alg_shm_handle.buf)
 
     def estimate_conveyor_speed(self, detections: List[Detection], current_time: float) -> None:
         dt = current_time - self.prev_time
@@ -145,8 +161,8 @@ class IMX500Detector:
 
     def _select_camera(self, camera_index: int) -> str:
         cameras = [
-            "/base/axi/pcie@120000/rp1/i2c@88000/imx500@1a",
-            "/base/axi/pcie@120000/rp1/i2c@80000/imx500@1a",
+            "/base/axi/pcie@1000120000/rp1/i2c@88000/imx500@1a",
+            "/base/axi/pcie@1000120000/rp1/i2c@80000/imx500@1a"
         ]
         if camera_index < 0 or camera_index >= len(cameras):
             raise ValueError(f"Invalid camera index: {camera_index}. Available cameras: {len(cameras)}")
@@ -171,6 +187,7 @@ class IMX500Detector:
             controls={"FrameRate": self.intrinsics.inference_rate},
             buffer_count=12
         )
+        self.imx500.show_network_fw_progress_bar()
         self.picam2.start(config)
         if self.intrinsics.preserve_aspect_ratio:
             self.imx500.set_auto_aspect_ratio()
@@ -304,6 +321,8 @@ class IMX500Detector:
             self.anomaly_results[result["id"]] = new_score >= self.anomaly_threshold
 
         labels = self.get_labels()
+        alg_results = []
+
         with MappedArray(request, "main") as m:
             # draw detection region
             b_x, b_y, b_w, b_h = self.detection_region
@@ -325,9 +344,15 @@ class IMX500Detector:
                     1,
                 )
 
-            for detection in self.last_results:
+            for ind, detection in enumerate(self.last_results):
                 x, y, w, h = detection.box
                 label = f"ID:{detection.tracking_id}-{labels[detection.category]}({detection.conf:.2f})"
+
+                alg_results.append([
+                    detection.tracking_id,
+                    detection.category,
+                    detection.conf
+                ])
 
                 # Add classification result if available
                 bbox_color = (255, 255, 0, 0)
@@ -365,6 +390,16 @@ class IMX500Detector:
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
                 cv2.rectangle(m.array, (b_x, b_y),
                             (b_x + b_w, b_y + b_h), (255, 0, 0, 0))
+            
+            if self.camera_shm:
+                with self.camera_shm.im_lock:
+                    self.shm_image[:] = m.array[:, :, :3]
+                
+                if alg_results:
+                    with self.camera_shm.alg_lock:
+                        for i, result in enumerate(alg_results):
+                            if i < len(self.shm_results):
+                                self.shm_results[i, :] = np.array(result, dtype=np.float16)
 
     def update_bbox_queue(self, bbox_queue: Queue) -> None:
         if not self.last_results:

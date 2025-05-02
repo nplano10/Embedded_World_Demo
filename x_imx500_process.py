@@ -19,17 +19,9 @@ class Model(Enum):
     TRAINED = 2
 
 
-def anomaly_process(
-    event,
-    bbox_queue,
-    results_queue,
-    args,
-    camera_shm: CameraShm,
-):
-
+def anomaly_process(event, bbox_queue, results_queue, args, camera_shm: CameraShm):
     detector = IMX500AnomalyDetector(args)
-    detector.picam2.pre_callback = lambda req: detector.process_frame(
-        req, bbox_queue, results_queue, camera_shm)
+    detector.picam2.pre_callback = lambda req: detector.process_frame(req, bbox_queue, results_queue, camera_shm)
     print("Done loading model")
 
     # Attach to shared memory block
@@ -37,51 +29,23 @@ def anomaly_process(
     image = np.ndarray(camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf)
 
     while not event.is_set():
-        time.sleep(1 / args.fps)  # TODO: running at 20 fps or 30?
         with camera_shm.im_lock:
             image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
+
 
 
 def detection_process(event, bbox_queue, results_queue, args, camera_shm: CameraShm):
-
-    detector = IMX500Detector(args)
+    detector = IMX500Detector(args, camera_shm)
     detector.picam2.pre_callback = lambda req: detector.draw_detections(req, results_queue)
-
-    # Attach to shared memory block
-    im_shm = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
-    image = np.ndarray(
-        camera_shm.im_shape, dtype=np.uint8, buffer=im_shm.buf
-    )
-
-    alg_shm = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
-    results = np.ndarray(camera_shm.alg_shape, dtype=np.float16, buffer=alg_shm.buf)
-
     while not event.is_set():
-        time.sleep(1/args.fps)
-
-        # Postprocess the results
         metadata = detector.picam2.capture_metadata()
         detector.last_results = detector.parse_detections(
-            metadata, args.iou, args.max_detections, args.threshold
+            metadata, 
+            detector.args.iou, 
+            detector.args.max_detections, 
+            detector.args.threshold
         )
         detector.update_bbox_queue(bbox_queue)
-
-        # Update image in shared memory
-        with camera_shm.im_lock:
-            image[:] = detector.picam2.capture_array().astype(np.uint8)[:, :, :3]
-
-        # Update detection results in shared memory
-        with camera_shm.alg_lock:
-            for ind, detection in enumerate(detector.last_results):
-
-                curr_results = [
-                    detection.tracking_id,
-                    detection.category,
-                    detection.conf
-                ]
-
-                results[ind, :] = np.array(curr_results, dtype=np.float16)
-
 
 def no_model_process(
     event,

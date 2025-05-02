@@ -12,8 +12,8 @@ class IMX500NoModel:
 
     def _select_camera(self, camera_index: int) -> str:
         cameras = [
-            "/base/axi/pcie@120000/rp1/i2c@88000/imx500@1a",
-            "/base/axi/pcie@120000/rp1/i2c@80000/imx500@1a",
+            "/base/axi/pcie@1000120000/rp1/i2c@88000/imx500@1a",
+            "/base/axi/pcie@1000120000/rp1/i2c@80000/imx500@1a"
         ]
         if camera_index < 0 or camera_index >= len(cameras):
             raise ValueError(f"Invalid camera index: {camera_index}. Available cameras: {len(cameras)}")
