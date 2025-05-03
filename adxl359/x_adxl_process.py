@@ -2,7 +2,7 @@ import numpy as np
 from PyQt5.QtGui import QImage
 from PyQt5.QtCore import Qt
 from multiprocessing import shared_memory
-from  adxl359  import ADXL359
+from  adxl359.adxl359  import ADXL359
 import time
 import pyqtgraph as pg
 

@@ -17,7 +17,7 @@ History       :
 import time
 import cv2
 import numpy as np
-from sony_code.sort import Sort
+from imx500.sort import Sort
 from functools import lru_cache
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Set
@@ -83,18 +83,15 @@ class IMX500Detector:
         self.args = args
 
         self.camera_shm = camera_shm
-        if self.camera_shm:
-            self.im_shm_handle = shared_memory.SharedMemory(name=camera_shm.im_shm.name)
-            self.shm_image = np.ndarray(
-                self.camera_shm.im_shape, 
-                dtype=np.uint8, 
-                buffer=self.im_shm_handle.buf
-            )
+        if camera_shm and hasattr(camera_shm, 'alg_shm'):
             self.alg_shm_handle = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
             self.shm_results = np.ndarray(
-                self.camera_shm.alg_shape, 
-                dtype=np.float16, 
-                buffer=self.alg_shm_handle.buf)
+                camera_shm.alg_shape, dtype=np.float16, buffer=self.alg_shm_handle.buf
+            )
+            self.alg_lock = camera_shm.alg_lock
+        else:
+            self.shm_results = None
+            self.alg_lock = None
 
     def estimate_conveyor_speed(self, detections: List[Detection], current_time: float) -> None:
         dt = current_time - self.prev_time
@@ -188,10 +185,10 @@ class IMX500Detector:
             buffer_count=12
         )
         self.imx500.show_network_fw_progress_bar()
-        self.picam2.start(config)
+        self.picam2.start(config, show_preview=False)
         if self.intrinsics.preserve_aspect_ratio:
             self.imx500.set_auto_aspect_ratio()
-        self.set_camera_config("camera_settings.json")
+        self.set_camera_config("imx500/camera_settings.json")
 
     def set_camera_config(self,json_file):
         with open(json_file, 'r') as file:
@@ -294,7 +291,17 @@ class IMX500Detector:
 
         return tracked_detections
 
-    def draw_detections(self, request, results_queue) -> None:
+    def draw_detections(self, request, bbox_queue, results_queue) -> None:
+        metadata = request.get_metadata()
+        self.last_results = self.parse_detections(
+            metadata,
+            self.args.iou,
+            self.args.max_detections,
+            self.args.threshold,
+        )
+        
+        self.update_bbox_queue(bbox_queue)
+
         if self.last_results is None:
             return
         # Get all available classification results
@@ -359,7 +366,7 @@ class IMX500Detector:
                 if labels[detection.category] == JELLYBEAN:
                     bbox_color = (255, 0, 0, 0) # red for jellybean
                 if detection.tracking_id in self.anomaly_results:
-                    if self.anomaly_scores[detection.tracking_id] < self.anomaly_threshold:
+                    if not self.anomaly_results[detection.tracking_id]:
                         bbox_color = (0, 255, 0, 0) # green for normal pill
                     else:
                         bbox_color = (255, 0, 0, 0) # red for abnormal pill
@@ -391,15 +398,11 @@ class IMX500Detector:
                 cv2.rectangle(m.array, (b_x, b_y),
                             (b_x + b_w, b_y + b_h), (255, 0, 0, 0))
             
-            if self.camera_shm:
-                with self.camera_shm.im_lock:
-                    self.shm_image[:] = m.array[:, :, :3]
-                
-                if alg_results:
-                    with self.camera_shm.alg_lock:
-                        for i, result in enumerate(alg_results):
-                            if i < len(self.shm_results):
-                                self.shm_results[i, :] = np.array(result, dtype=np.float16)
+            if self.shm_results is not None and self.alg_lock and alg_results:
+                with self.alg_lock:
+                    for i, result in enumerate(alg_results):
+                        if i < len(self.shm_results):
+                            self.shm_results[i, :] = np.array(result, dtype=np.float16)
 
     def update_bbox_queue(self, bbox_queue: Queue) -> None:
         if not self.last_results:
@@ -429,7 +432,7 @@ class IMX500Detector:
                     }
                     bbox_queue.put(bbox_data)
                     self.processed_ids.add(detection.tracking_id)
-                    print(f"ObjDet: Added to bbox_queue: {bbox_data}")
+                    # print(f"ObjDet: Added to bbox_queue: {bbox_data}")
 
             elif bbox_queue.full():
                 print(f"ObjDet: bbox_queue is full with {bbox_queue.qsize()} items. Not adding track ID {detection.tracking_id}")

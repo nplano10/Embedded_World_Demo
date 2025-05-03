@@ -23,7 +23,6 @@ from picamera2 import CompletedRequest, MappedArray, Picamera2
 from picamera2.devices import IMX500
 import json
 from multiprocessing import shared_memory
-from x_utils import CameraShm
 
 @dataclass
 class AnomalyResult:
@@ -40,7 +39,7 @@ class ROIState:
     set_frame: int
 
 class IMX500AnomalyDetector:
-    def __init__(self, args):
+    def __init__(self, args, camera_shm=None):
         self.camera_path = self._select_camera(args.camera_index)
         self.imx500 = IMX500(network_file=args.model, camera_id=self.camera_path)
         self.picam2 = Picamera2(self.imx500.camera_num)
@@ -61,6 +60,15 @@ class IMX500AnomalyDetector:
         self.frames_to_wait = 3 if self.fps == 30 else 2 if self.fps <= 20 else None
         if self.frames_to_wait is None:
             raise ValueError("FPS must be either 30 or <= 20")
+        
+        self.camera_shm = camera_shm
+        if camera_shm and hasattr(camera_shm, 'alg_shm'):
+            self.alg_shm_handle = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
+            self.shm_results = np.ndarray(camera_shm.alg_shape, dtype=np.float16, buffer=self.alg_shm_handle.buf)
+            self.alg_lock = camera_shm.alg_lock
+        else:
+            self.shm_results = None
+            self.alg_lock = None
 
     def _select_camera(self, camera_index: int) -> str:
         cameras = [
@@ -77,8 +85,8 @@ class IMX500AnomalyDetector:
             buffer_count=12
         )
         self.imx500.show_network_fw_progress_bar()
-        self.picam2.start(config)
-        self.set_camera_config("camera_settings.json")
+        self.picam2.start(config, show_preview=False)
+        self.set_camera_config("imx500/camera_settings.json")
 
     def set_camera_config(self,json_file):
         with open(json_file, 'r') as file:
@@ -175,7 +183,7 @@ class IMX500AnomalyDetector:
             cv2.putText(m.array, frame_text, (10, 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)  # Green color
 
-    def process_frame(self, request: CompletedRequest, bbox_queue, results_queue, camera_shm: CameraShm) -> None:
+    def process_frame(self, request: CompletedRequest, bbox_queue, results_queue) -> None:
         """
         Process each frame:
         1. Set new ROI from bbox_queue (if available)
@@ -199,23 +207,18 @@ class IMX500AnomalyDetector:
                     results_queue.put(result_dict)
                     self.draw_anomaly_results(request, results)
                     self.processed_bbox_ids.add(roi_state.bbox_id)
-                    print(f"Anom: Added to results_queue: {result_dict}")
+                    # print(f"Anom: Added to results_queue: {result_dict}")
 
-                    # Write to shared memory for GUI
-                    alg_shm = shared_memory.SharedMemory(name=camera_shm.alg_shm.name)
-                    results = np.ndarray(
-                        camera_shm.alg_shape, dtype=np.float16, buffer=alg_shm.buf
-                    )
-                    with camera_shm.alg_lock:
-                        # append to existing information in shm
-                        used_row_ind = int(results[0, 0])
-                        results[used_row_ind + 1, :] = [
-                            result_dict["id"],
-                            result_dict["is_anomaly"],
-                            result_dict["anomaly_score"],
-                        ]
-                        results[0, 0] += 1  # update the last used row
-
+                    if self.shm_results is not None and self.alg_lock:
+                        with self.alg_lock:
+                            used_row_ind = int(self.shm_results[0, 0])
+                            if used_row_ind + 1 < self.shm_results.shape[0]:
+                                self.shm_results[used_row_ind + 1, :] = [
+                                    result_dict["id"],
+                                    result_dict["is_anomaly"],
+                                    result_dict["anomaly_score"],
+                                ]
+                                self.shm_results[0, 0] += 1
                 del self.roi_settings[result_frame]
 
             # set ROI

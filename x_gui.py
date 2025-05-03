@@ -19,11 +19,11 @@ from PyQt5.QtWidgets import (
 )
 from multiprocessing import shared_memory
 import multiprocessing
-from x_adxl_process import update_adxl359_vib_data_shm
-from x_imx500_process import Model, update_imx500_shm
-from x_imx500_gui_thread import CameraThread
-from x_utils import CameraShm
-from x_adxl_gui_thread import Adxl359Thread
+from adxl359.x_adxl_process import update_adxl359_vib_data_shm
+# Import the new unified camera system class
+from imx500.x_imx500 import IMX500CameraSystem, Model
+from adxl359.x_adxl_gui_thread import Adxl359Thread
+from picamera2.previews.qt import QGlPicamera2
 
 
 class MainWindow(QMainWindow):
@@ -36,7 +36,28 @@ class MainWindow(QMainWindow):
         self.adxl359_sample_rate = 1000
         self.adxl359_sample_length = 1000
 
-        self.model = Model.NO_MODEL
+        # Keep track of created shared memory objects to ensure cleanup
+        self.shared_memory_objects = []
+
+        # Initialize with TRAINED model
+        self.model = Model.TRAINED
+        
+        # Initialize the IMX500 camera system - replaces the detector creation
+        self.camera_system = IMX500CameraSystem(parent=self, model_type=self.model)
+        
+        # Extract necessary components for backward compatibility
+        self.detector = self.camera_system.detector
+        self.anomaly_detector = self.camera_system.anomaly_detector
+        if self.model == Model.TRAINED:
+            self.bbox_queue = self.camera_system.bbox_queue
+            self.results_queue = self.camera_system.results_queue
+            self.det_camera_shm = self.camera_system.det_camera_shm
+            self.anom_camera_shm = self.camera_system.anom_camera_shm
+        else:
+            self.bbox_queue = None
+            self.results_queue = None
+            self.det_camera_shm = None
+            self.anom_camera_shm = None
 
         # Set up the window to match the screen size
         screen = QDesktopWidget().screenGeometry()
@@ -78,7 +99,21 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(main_layout)
 
         # ============================
-        # Set up threads, shared memory for updating GUI contents
+        # Set up the camera previews and callbacks
+        # ============================
+        
+        # Stop any existing previews
+        if self.model == Model.TRAINED:
+            self.detector.picam2.stop_preview()
+            self.anomaly_detector.picam2.stop_preview()
+            self.detector.picam2.pre_callback = lambda req: self.detector.draw_detections(req, self.bbox_queue, self.results_queue)
+            self.anomaly_detector.picam2.pre_callback = lambda req: self.anomaly_detector.process_frame(req, self.bbox_queue, self.results_queue)
+        else:
+            self.detector.picam2.stop_preview()
+            self.anomaly_detector.picam2.stop_preview()
+
+        # ============================
+        # Set up sensors, shared memory for updating vibration data
         # ============================
 
         # Set up the QTimer to update the images at 25 fps seconds
@@ -93,12 +128,21 @@ class MainWindow(QMainWindow):
         self.adxl359_lock = multiprocessing.Lock()
         vib_h, vib_w = self.vibx_graph.height, self.vibx_graph.width
         self.adxl359_vib_data_shape = (vib_h, vib_w, 3, 4)  # sync with layout size
-        self.adxl359_vib_data_shm = shared_memory.SharedMemory(
-            create=True, size=np.prod(self.adxl359_vib_data_shape) * np.uint8().itemsize
-        )
-        self.adxl359_temp_shm = shared_memory.SharedMemory(
-            create=True, size=np.float16().itemsize
-        )
+        
+        # Create shared memory objects with proper tracking
+        try:
+            self.adxl359_vib_data_shm = shared_memory.SharedMemory(
+                create=True, size=np.prod(self.adxl359_vib_data_shape) * np.uint8().itemsize
+            )
+            self.shared_memory_objects.append(('adxl359_vib_data_shm', self.adxl359_vib_data_shm))
+            
+            self.adxl359_temp_shm = shared_memory.SharedMemory(
+                create=True, size=np.float16().itemsize
+            )
+            self.shared_memory_objects.append(('adxl359_temp_shm', self.adxl359_temp_shm))
+        except Exception as e:
+            print(f"Error creating shared memory: {e}")
+            self.exit_application()
 
         self.adxl359_thread = Adxl359Thread(
             self,
@@ -119,28 +163,12 @@ class MainWindow(QMainWindow):
         )
         self.sensor_processes.start()
 
-        self.det_camera_shm = CameraShm(self.camera_shape, self.det_log_shape)
-        self.anom_camera_shm = CameraShm(self.camera_shape, self.anom_log_shape)
-        self.camera_thread = CameraThread(
-            self,
-            self.det_camera_shm,
-            self.anom_camera_shm,
-        )
+        # Start camera previews
+        self.start_camera_previews()
 
-        # Connect the thread signals to slots in the main window
-        self.camera_thread.camera_feed_signal.connect(self.update_camera_feed)
+        # Use the camera system's thread for logging
+        self.camera_thread = self.camera_system
         self.camera_thread.log_feed_signal.connect(self.update_camera_log)
-        self.terminate_event = multiprocessing.Event()
-        self.camera_processes = multiprocessing.Process(
-            target=update_imx500_shm,
-            args=(
-                self.model,
-                self.terminate_event,
-                self.det_camera_shm,
-                self.anom_camera_shm,
-            ),
-        )
-        self.camera_processes.start()
 
     def closeEvent(self, event):
         # This function will be triggered when the window is closed (clicked on "X")
@@ -158,32 +186,8 @@ class MainWindow(QMainWindow):
     def create_button_layout(self, screen_height, screen_width):
         height_buttons = int(screen_height * (1 / 32))
         width_buttons = int(screen_width / 16)
-
-        # ============================
-        # Set up buttons
-        # ============================
-
-        # button_start = QPushButton("Start", self)
-        # button_start.setFixedSize(width_buttons, height_buttons)
-        # button_start.setStyleSheet(
-        #     "background-color: darkgray; border: 1px solid lightgray; color: black;"
-        # )
-
-        # button_stop = QPushButton("Stop", self)
-        # button_stop.setFixedSize(width_buttons, height_buttons)
-        # button_stop.setStyleSheet(
-        #     "background-color: darkgray; border: 1px solid lightgray; color: black;"
-        # )
-        # button_dispense = QPushButton("Dispense", self)
-        # button_dispense.setFixedSize(width_buttons, height_buttons)
-        # button_dispense.setStyleSheet(
-        #     "background-color: darkgray; border: 1px solid lightgray; color: black;"
-        # )
         # # Create button layout and add buttons to it
         button_layout = QVBoxLayout()
-        # button_layout.addWidget(button_start, alignment=Qt.AlignCenter)
-        # button_layout.addWidget(button_stop, alignment=Qt.AlignCenter)
-        # button_layout.addWidget(button_dispense, alignment=Qt.AlignCenter)
 
         # ============================
         # Set up model selection
@@ -253,9 +257,14 @@ class MainWindow(QMainWindow):
 
         # Camera feed 1 and its logging window
         cam_1_layout = QHBoxLayout()
-        self.camera_feed_1 = self.create_camera_feed(
-            cam_height, cam_width, title="Camera Feed 1"
-        )
+        
+        # QGlPicamera2 for camera 1
+        self.camera_feed_1 = QWidget()
+        self.camera_feed_1.height = cam_height
+        self.camera_feed_1.width = cam_width
+        self.camera_feed_1.setFixedSize(self.camera_feed_1.width, self.camera_feed_1.height)
+        self.camera_feed_1.setStyleSheet("background-color: lightgray;")
+        
         self.camera_log_1 = self.create_camera_log(
             log_height, log_width, title="Camera 1 Logging"
         )
@@ -266,9 +275,14 @@ class MainWindow(QMainWindow):
 
         # Camera feed 2 and its logging window
         cam_2_layout = QHBoxLayout()
-        self.camera_feed_2 = self.create_camera_feed(
-            cam_height, cam_width, title="Camera Feed 2"
-        )
+        
+        # QGlPicamera2 for camera 2
+        self.camera_feed_2 = QWidget()
+        self.camera_feed_2.height = cam_height
+        self.camera_feed_2.width = cam_width
+        self.camera_feed_2.setFixedSize(self.camera_feed_2.width, self.camera_feed_2.height)
+        self.camera_feed_2.setStyleSheet("background-color: lightgray;")
+        
         self.camera_log_2 = self.create_camera_log(
             log_height, log_width, title="Camera 2 Logging"
         )
@@ -278,15 +292,6 @@ class MainWindow(QMainWindow):
         cam_layout.addLayout(cam_2_layout)
 
         return cam_layout
-
-    def create_camera_feed(self, cam_height, cam_width, title="Camera Feed"):
-        camera_feed = QLabel(self)
-        camera_feed.height = cam_height
-        camera_feed.width = cam_width
-        camera_feed.setFixedSize(camera_feed.width,camera_feed.height)
-        camera_feed.setText(title)  # Placeholder text
-        camera_feed.setStyleSheet("background-color: lightgray;")
-        return camera_feed
 
     def create_camera_log(self, log_height, log_width, title="Camera logging window"):
         camera_log = QTextEdit(self)
@@ -323,98 +328,213 @@ class MainWindow(QMainWindow):
         vib_graph.width = vib_width
         vib_graph.setFixedSize(vib_graph.width, vib_graph.height)
         return vib_graph
+    
+    def clear_layout(self, widget: QWidget):
+        layout = widget.layout()
+        if layout is not None:
+            while layout.count():
+                item = layout.takeAt(0)
+                child = item.widget()
+                if child is not None:
+                    child.setParent(None)
+            # Optionally remove the layout itself
+            QWidget().setLayout(layout)
 
     def apply_model(self):
         """Handle the Apply Model button action."""
-        if self.radio_button1.isChecked():
-            selected_model = Model[self.radio_button1.text()]
-        else:
-            selected_model = Model[self.radio_button2.text()]
+        import time, gc
 
-        if self.model== selected_model:
+        selected_model = Model[self.radio_button1.text()] if self.radio_button1.isChecked() else Model[self.radio_button2.text()]
+        if self.model == selected_model:
             print("no change")
-        else:
-            self.model = selected_model
-            if self.camera_processes.is_alive():
-                # Terminate existing process
-                self.terminate_event.set()
-                self.camera_processes.join()
+            return
 
-            # Start new process
-            self.terminate_event = multiprocessing.Event()
-            self.camera_processes = multiprocessing.Process(
-                target=update_imx500_shm,
-                args=(
-                    self.model,
-                    self.terminate_event,
-                    self.det_camera_shm,
-                    self.anom_camera_shm,
-                ),
-            )
-            self.camera_processes.start()
+        print("Switching model from", self.model.name, "to", selected_model.name)
 
-            # Clear the shm
-            det_shm = shared_memory.SharedMemory(name=self.det_camera_shm.alg_shm.name)
-            results = np.ndarray(
-                self.det_camera_shm.alg_shape, dtype=np.float16, buffer=det_shm.buf
-            )
-            with self.det_camera_shm.im_lock:
-                results[:] = 0
+        sender = self.sender()
+        if sender:
+            sender.setEnabled(False)
 
-            anom_shm = shared_memory.SharedMemory(name=self.anom_camera_shm.alg_shm.name)
-            results = np.ndarray(
-                self.anom_camera_shm.alg_shape, dtype=np.float16, buffer=anom_shm.buf
-            )
-            with self.anom_camera_shm.im_lock:
-                results[:] = 0
+        # Remove previews safely
+        for preview_attr, cam_feed in [('preview1', self.camera_feed_1), ('preview2', self.camera_feed_2)]:
+            try:
+                preview = getattr(self, preview_attr, None)
+                if preview:
+                    layout = cam_feed.layout()
+                    if layout:
+                        layout.removeWidget(preview)
+                    preview.setParent(None)
+                    preview.deleteLater()
+                    setattr(self, preview_attr, None)
+                print(f"removing {preview_attr} and  {cam_feed}")
+            except Exception as e:
+                print(f"Error removing {preview_attr}: {e}")
 
-            # Clear the log history
-            self.camera_log_1.clear()
-            self.camera_log_2.clear()
-            self.camera_log_1.update()
-            self.camera_log_2.update()
+        # Clean up camera system - IMPORTANT: do this BEFORE creating a new one
+        if hasattr(self, 'camera_system'):
+            try:
+                # Stop the thread if it's running
+                if self.camera_system.isRunning():
+                    self.camera_system.quit()
+                    self.camera_system.wait()
+                    
+                # Stop camera timers
+                if hasattr(self, 'camera_timer'):
+                    self.camera_timer.stop()
+                    
+                # Make sure to stop and close the camera devices
+                if hasattr(self.camera_system, 'detector') and self.camera_system.detector:
+                    print("Stopping detector camera...")
+                    try:
+                        self.camera_system.detector.picam2.stop()
+                        self.camera_system.detector.picam2.close()
+                    except Exception as e:
+                        print(f"Error stopping detector: {e}")
+                        
+                if hasattr(self.camera_system, 'anomaly_detector') and self.camera_system.anomaly_detector:
+                    print("Stopping anomaly detector camera...")
+                    try:
+                        self.camera_system.anomaly_detector.picam2.stop()
+                        self.camera_system.anomaly_detector.picam2.close()
+                    except Exception as e:
+                        print(f"Error stopping anomaly detector: {e}")
+                    
+                # Clean up camera system resources
+                self.camera_system.cleanup()
+                
+                # Remove signal connections
+                try:
+                    self.camera_system.log_feed_signal.disconnect()
+                except Exception as e:
+                    print(f"Error disconnecting signals: {e}")
+                    
+                # Delete the camera system
+                del self.camera_system
+                self.camera_system = None
+            except Exception as e:
+                print(f"Error stopping camera system: {e}")
 
-            # Update the model information
-            self.model_label.setText(f"<b><i>Current: {self.model.name}</i></b>")
+        # Give time for camera hardware release
+        print("Waiting for camera resources to be released...")
+        time.sleep(20)
+        gc.collect()
+
+        # Set new model
+        self.model = selected_model
+        print("Creating new camera system instance...")
+
+        # Create new camera system with selected model
+        try:
+            self.camera_system = IMX500CameraSystem(parent=self, model_type=self.model)
+            
+            # Update internal references for backward compatibility
+            self.detector = self.camera_system.detector
+            self.anomaly_detector = self.camera_system.anomaly_detector
+            if self.model == Model.TRAINED:
+                self.bbox_queue = self.camera_system.bbox_queue
+                self.results_queue = self.camera_system.results_queue
+                self.det_camera_shm = self.camera_system.det_camera_shm
+                self.anom_camera_shm = self.camera_system.anom_camera_shm
+                self.detector.picam2.stop_preview()
+                self.anomaly_detector.picam2.stop_preview()
+                self.detector.picam2.pre_callback = lambda req: self.detector.draw_detections(req, self.bbox_queue, self.results_queue)
+                self.anomaly_detector.picam2.pre_callback = lambda req: self.anomaly_detector.process_frame(req, self.bbox_queue, self.results_queue)
+            else:
+                self.bbox_queue = None
+                self.results_queue = None
+                self.det_camera_shm = None
+                self.anom_camera_shm = None
+                self.detector.picam2.stop_preview()
+                self.anomaly_detector.picam2.stop_preview()
+        except Exception as e:
+            print(f"Error creating camera system instance: {e}")
+            # Optionally, try to recover by setting back to the previous model
+            # or just continue with a disabled camera system
+
+        # Use the camera system's thread for logging
+        self.camera_thread = self.camera_system
+        self.camera_thread.log_feed_signal.connect(self.update_camera_log)
+
+        self.camera_log_1.clear()
+        self.camera_log_2.clear()
+        self.model_label.setText(f"<b><i>Current: {self.model.name}</i></b>")
+
+        # Restart camera timer
+        if hasattr(self, 'camera_timer'):
+            self.camera_timer.start(int(1000 / 20))
+
+        print("Starting new camera previews...")
+        self.start_camera_previews()
+
+        if hasattr(self, 'log_timer'):
+            self.log_timer.start(200)
+        if sender:
+            sender.setEnabled(True)
+
+    def start_camera_previews(self):
+        """Set up camera previews using QGlPicamera2."""
+        if not self.detector or not self.anomaly_detector:
+            return
+        
+        # Camera 1
+        camera1_layout = QVBoxLayout()
+        self.clear_layout(self.camera_feed_1)
+        self.camera_feed_1.setLayout(camera1_layout)
+        self.preview1 = QGlPicamera2(self.detector.picam2, width=self.camera_feed_1.width, height=self.camera_feed_1.height)
+        camera1_layout.addWidget(self.preview1)
+
+        # Camera 2
+        camera2_layout = QVBoxLayout()
+        self.clear_layout(self.camera_feed_2)
+        self.camera_feed_2.setLayout(camera2_layout)
+        self.preview2 = QGlPicamera2(self.anomaly_detector.picam2, width=self.camera_feed_2.width, height=self.camera_feed_2.height)
+        camera2_layout.addWidget(self.preview2)
+
+    def update_camera_log(self, camera_log_data_tuple):
+        det_log, anom_log = camera_log_data_tuple
+        if det_log:
+            self.print_log(self.camera_log_1, det_log, overwrite=True)
+        if anom_log:
+            self.print_log(self.camera_log_2, anom_log)
 
     def exit_application(self):
-
-        print(" Cleaning threads")
-        if self.camera_thread.isRunning():
-            self.camera_thread.quit()
-            self.camera_thread.wait()
-
-        if self.adxl359_thread.isRunning():
+        print("Cleaning threads")
+        
+        # Clean up camera system
+        if hasattr(self, 'camera_system'):
+            try:
+                self.camera_system.cleanup()
+            except Exception as e:
+                print(f"Error cleaning up camera system: {e}")
+                
+        if hasattr(self, 'adxl359_thread') and self.adxl359_thread.isRunning():
             self.adxl359_thread.quit()
             self.adxl359_thread.wait()
-        print(" Done Cleaning threads")
+        print("Done Cleaning threads")
 
-        if self.sensor_processes.is_alive():
+        if hasattr(self, 'sensor_processes') and self.sensor_processes.is_alive():
             print("Terminating sensor process as it is still running...")
             self.sensor_processes.terminate()  # Forcefully terminate the process
-
-        if self.camera_processes.is_alive():
-            print("Terminating camera_processes as it is still running...")
-            self.terminate_event.set()
-            self.camera_processes.join()
-            print("child is done")
+            # Wait for process to fully terminate to avoid resource leaks
+            self.sensor_processes.join(timeout=5)
+            if self.sensor_processes.is_alive():
+                print("Force killing sensor process...")
+                self.sensor_processes.kill()
+                self.sensor_processes.join(timeout=1)
 
         print("Cleaning mem")
-        self.det_camera_shm.im_shm.close()  # Detach from the shared memory
-        self.det_camera_shm.im_shm.unlink()  # Deallocate the shared memory
-        self.det_camera_shm.alg_shm.close()
-        self.det_camera_shm.alg_shm.unlink()
-
-        self.adxl359_temp_shm.close()
-        self.adxl359_temp_shm.unlink()
-
-        self.anom_camera_shm.im_shm.close()  # Detach from the shared memory
-        self.anom_camera_shm.im_shm.unlink()  # Deallocate the shared memory
-        self.anom_camera_shm.alg_shm.close()
-        self.anom_camera_shm.alg_shm.unlink()
-
-        self.adxl359_vib_data_shm.close()  # Detach from the shared memory
-        self.adxl359_vib_data_shm.unlink()  # Deallocate the shared memory
+        # Systematically clean up all shared memory objects
+        for name, shm_obj in self.shared_memory_objects:
+            try:
+                print(f"Cleaning shared memory object: {name}")
+                shm_obj.close()
+                shm_obj.unlink()
+            except Exception as e:
+                print(f"Error cleaning shared memory object {name}: {e}")
+        
+        # Clear the list to avoid double-free issues
+        self.shared_memory_objects.clear()
+        
         print("Done Cleaning mem")
 
         print("exiting")
@@ -428,19 +548,7 @@ class MainWindow(QMainWindow):
         self.adxl359_thread.start()
         self.adxl359_thread.setPriority(QThread.LowPriority)
 
-    def update_camera_feed(self,camera_data_tuple):
-        det_camera, anom_camera = camera_data_tuple
-        self.display_image(self.camera_feed_1, det_camera)
-        self.display_image(self.camera_feed_2, anom_camera)
-
-    def update_camera_log(self, camera_log_data_tuple):
-        det_log, anom_log = camera_log_data_tuple
-        if det_log:
-            self.print_log(self.camera_log_1, det_log, overwrite=True)
-        if anom_log:
-            self.print_log(self.camera_log_2, anom_log)
-
-    def update_adxl359_feed(self,plot_tuple):
+    def update_adxl359_feed(self, plot_tuple):
         vibx_graph, viby_graph, vibz_graph, vib_anom_graph = plot_tuple
         self.display_image(self.vibx_graph, vibx_graph)
         self.display_image(self.viby_graph, viby_graph)
@@ -449,10 +557,9 @@ class MainWindow(QMainWindow):
         # self.temperature_label.setText(f"Temperature: {temp[0]:.2f} °C")
 
     def display_image(self, label: QLabel, image_pixmap):
-        label.setPixmap(image_pixmap.scaled(label.width,label.height))
+        label.setPixmap(image_pixmap.scaled(label.width, label.height))
 
     def print_log(self, textbox: QTextEdit, log_info, overwrite=False):
-
         if overwrite:
             textbox.setText(log_info)
         else:

@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBox
 
 
 from picamera2 import Picamera2
-import adxl359
+import adxl359.adxl359 as adxl359
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from io import BytesIO
 import cv2
