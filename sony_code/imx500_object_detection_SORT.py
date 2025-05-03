@@ -359,7 +359,7 @@ class IMX500Detector:
                 if labels[detection.category] == JELLYBEAN:
                     bbox_color = (255, 0, 0, 0) # red for jellybean
                 if detection.tracking_id in self.anomaly_results:
-                    if not self.anomaly_results[detection.tracking_id]:
+                    if self.anomaly_scores[detection.tracking_id] < self.anomaly_threshold:
                         bbox_color = (0, 255, 0, 0) # green for normal pill
                     else:
                         bbox_color = (255, 0, 0, 0) # red for abnormal pill
