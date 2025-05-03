@@ -67,7 +67,7 @@ class IMX500CameraSystem(QThread):
         anomaly_args = argparse.Namespace(
             model=ANOM_MODEL,
             camera_index=1,
-            fps=14,
+            fps=15,
             image_threshold=ANOMALY_IMAGE_THRESHOLD,
             pixel_threshold=0.30,
             constant_offset_in_pixel=CAMERA_DISTANCE_PIXELS,
